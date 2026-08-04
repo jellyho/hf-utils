@@ -157,6 +157,9 @@ td.c-check { text-align: center; }
   position: fixed; inset: 0; background: rgba(0,0,0,.55);
   display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
 }
+/* The [hidden] attribute must win over the display:flex above, otherwise
+   modals stay visible on load and can't be dismissed. */
+.modal-backdrop[hidden] { display: none; }
 .modal {
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: var(--shadow); width: min(520px, 100%); padding: 22px;
