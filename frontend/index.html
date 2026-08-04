@@ -21,6 +21,7 @@
     <button class="tab active" data-tab="model">Models</button>
     <button class="tab" data-tab="dataset">Datasets</button>
     <button class="tab" data-tab="collection">Collections</button>
+    <button class="tab" data-tab="transfer">Transfer</button>
   </nav>
 
   <!-- Repo view (models & datasets share this) -->
@@ -72,6 +73,53 @@
     </div>
     <div class="collections" id="colList"></div>
     <div class="empty" id="colEmpty" hidden></div>
+  </section>
+
+  <!-- Transfer view (download / upload) -->
+  <section class="view" id="transferView" hidden>
+    <div class="transfer-grid">
+      <div class="panel">
+        <h3>⤓ Download from Hub</h3>
+        <label class="field"><span>Repo ID</span>
+          <input id="dlRepoId" class="search" placeholder="jellyho/my-dataset" autocomplete="off" /></label>
+        <label class="field"><span>Type</span>
+          <select id="dlRepoType" class="select">
+            <option value="dataset">dataset</option>
+            <option value="model">model</option>
+          </select></label>
+        <label class="field"><span>Local folder (relative paths land in the repo dir)</span>
+          <input id="dlLocalDir" class="search" placeholder="downloads/my-dataset" autocomplete="off" /></label>
+        <label class="checkline">
+          <input type="checkbox" id="dlLerobot" /><span>Use LeRobot API</span>
+          <span class="hint" id="dlDetect"></span></label>
+        <button class="btn primary" id="dlStart">Start download</button>
+      </div>
+
+      <div class="panel">
+        <h3>⤒ Upload to Hub</h3>
+        <label class="field"><span>Local folder</span>
+          <input id="upLocalDir" class="search" placeholder="C:\path\to\dataset" autocomplete="off" /></label>
+        <label class="field"><span>Target repo ID</span>
+          <input id="upRepoId" class="search" placeholder="jellyho/my-dataset" autocomplete="off" /></label>
+        <label class="field"><span>Type</span>
+          <select id="upRepoType" class="select">
+            <option value="dataset">dataset</option>
+            <option value="model">model</option>
+          </select></label>
+        <label class="checkline"><input type="checkbox" id="upPrivate" /><span>Private</span></label>
+        <label class="checkline">
+          <input type="checkbox" id="upLerobot" /><span>Use LeRobot API</span>
+          <span class="hint" id="upDetect"></span></label>
+        <button class="btn primary" id="upStart">Start upload</button>
+      </div>
+    </div>
+
+    <div class="jobs-head">
+      <h3>Jobs</h3>
+      <span class="count" id="jobsCount"></span>
+    </div>
+    <div class="jobs" id="jobsList"></div>
+    <div class="empty" id="jobsEmpty">No transfer jobs yet.</div>
   </section>
 
   <!-- Confirm delete modal -->

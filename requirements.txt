@@ -1,3 +1,10 @@
+# Web app
 fastapi>=0.111
 uvicorn>=0.30
-huggingface_hub>=0.24
+
+# LeRobot pins huggingface_hub to <0.36; keep ours in the same range so the
+# two never fight during resolution.
+huggingface_hub>=0.34,<0.36
+
+# LeRobot dataset download/upload support (pulls torch, transformers, etc.).
+lerobot==0.4.4

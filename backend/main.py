@@ -24,13 +24,16 @@ from pydantic import BaseModel
 from huggingface_hub import HfApi
 from huggingface_hub.utils import HfHubHTTPError
 
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+from .jobs import JOBS
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 RepoType = Literal["model", "dataset"]
 # huggingface_hub uses "models"/"datasets" in URLs but "model"/"dataset" in the API.
 _URL_SEGMENT = {"model": "", "dataset": "datasets/"}
 
-app = FastAPI(title="HF Util", version="0.1.0")
+app = FastAPI(title="HF Util", version="0.2.0")
 
 
 # --------------------------------------------------------------------------- #
@@ -290,6 +293,95 @@ def remove_collection_item(body: RemoveCollectionItemBody) -> dict:
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_hf_error(exc))
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Transfer — download / upload (LeRobot-aware), run as background jobs
+# --------------------------------------------------------------------------- #
+def _resolve_dir(p: str) -> str:
+    path = Path(p).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return str(path)
+
+
+class DownloadBody(BaseModel):
+    repo_id: str
+    repo_type: RepoType = "dataset"
+    local_dir: str
+    use_lerobot: bool = False
+
+
+class UploadBody(BaseModel):
+    repo_id: str
+    repo_type: RepoType = "dataset"
+    local_dir: str
+    private: bool = False
+    use_lerobot: bool = False
+
+
+@app.get("/api/detect/hub")
+def detect_hub(repo_id: str, repo_type: RepoType = "dataset") -> dict:
+    """Is this Hub repo a LeRobot dataset? (has meta/info.json)"""
+    if repo_type != "dataset":
+        return {"lerobot": False, "reason": "not a dataset"}
+    try:
+        exists = get_api().file_exists(repo_id, "meta/info.json", repo_type="dataset")
+    except Exception as exc:
+        return {"lerobot": False, "error": _hf_error(exc)}
+    return {"lerobot": bool(exists)}
+
+
+@app.get("/api/detect/local")
+def detect_local(path: str) -> dict:
+    """Is this local folder a LeRobot dataset? (has meta/info.json)"""
+    base = Path(_resolve_dir(path))
+    return {
+        "resolved": str(base),
+        "exists": base.exists(),
+        "lerobot": (base / "meta" / "info.json").is_file(),
+    }
+
+
+@app.post("/api/transfer/download")
+def transfer_download(body: DownloadBody) -> dict:
+    mode = "lerobot" if body.use_lerobot else "generic"
+    job = JOBS.start(
+        kind="download", mode=mode, repo_id=body.repo_id,
+        repo_type=body.repo_type, local_dir=_resolve_dir(body.local_dir),
+    )
+    return job.public()
+
+
+@app.post("/api/transfer/upload")
+def transfer_upload(body: UploadBody) -> dict:
+    mode = "lerobot" if body.use_lerobot else "generic"
+    repo_type = "dataset" if mode == "lerobot" else body.repo_type
+    job = JOBS.start(
+        kind="upload", mode=mode, repo_id=body.repo_id, repo_type=repo_type,
+        local_dir=_resolve_dir(body.local_dir), private=body.private,
+    )
+    return job.public()
+
+
+@app.get("/api/jobs")
+def jobs_list() -> dict:
+    return {"jobs": [j.public(log_tail=8) for j in JOBS.list()]}
+
+
+@app.get("/api/jobs/{job_id}")
+def job_get(job_id: str) -> dict:
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.public(log_tail=200)
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def job_cancel(job_id: str) -> dict:
+    if not JOBS.cancel(job_id):
+        raise HTTPException(status_code=409, detail="job not running / not cancellable")
     return {"ok": True}
 
 

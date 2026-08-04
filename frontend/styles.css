@@ -179,6 +179,42 @@ td.c-check { text-align: center; }
 .field .search, .field textarea { width: 100%; }
 .checkline { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
 
+/* ---- transfer ---- */
+.transfer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+@media (max-width: 780px) { .transfer-grid { grid-template-columns: 1fr; } }
+.panel {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 16px;
+}
+.panel h3 { margin: 0 0 14px; font-size: 15px; }
+.panel .field { margin-bottom: 12px; }
+.panel .btn { width: 100%; margin-top: 4px; }
+.hint { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.hint.on { color: var(--accent); font-weight: 700; }
+
+.jobs-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.jobs-head h3 { margin: 0; }
+.jobs { display: flex; flex-direction: column; gap: 10px; }
+.job {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 12px 14px;
+}
+.job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.job-title { font-weight: 600; font-family: ui-monospace, monospace; font-size: 13px; }
+.job-meta { color: var(--muted); font-size: 12px; }
+.job-head .btn { margin-left: auto; }
+.job-log {
+  margin: 10px 0 0; padding: 8px 10px; background: #0b0d12; color: #cdd3de;
+  border: 1px solid var(--border); border-radius: 8px;
+  font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word;
+  max-height: 220px; overflow: auto;
+}
+@media (prefers-color-scheme: light) { .job-log { background: #0f1117; color: #cdd3de; } }
+.badge.running { color: var(--accent-2); border-color: rgba(79,140,255,.4); }
+.badge.success { color: var(--ok); border-color: rgba(34,197,94,.4); }
+.badge.error   { color: var(--danger); border-color: rgba(239,68,68,.45); }
+.badge.cancelled { color: var(--muted); }
+
 /* ---- toasts ---- */
 .toasts { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
 .toast {

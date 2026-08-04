@@ -13,6 +13,7 @@ const state = {
   selCol: new Set(),
   colItems: {}, // slug -> items[]
   colOpen: new Set(),
+  jobStatus: {}, // jobId -> last seen status (for completion toasts)
 };
 
 /* ----------------------------------------------------------------------- *
@@ -158,12 +159,14 @@ function renderRepos() {
 
     // actions
     const act = el("td", { className: "c-act" });
+    const dlBtn = el("button", { className: "btn tiny ghost", title: "Download" }, "⤓");
+    dlBtn.addEventListener("click", () => prefillDownload(r, state.tab));
     const renameBtn = el("button", { className: "btn tiny ghost", title: "Rename" }, "✎");
     renameBtn.addEventListener("click", () => startRename(r, nameTd, link));
     const visBtn = el("button", { className: "btn tiny ghost", title: "Toggle visibility" },
       r.private ? "Make public" : "Make private");
     visBtn.addEventListener("click", () => toggleVisibility(r, visBtn));
-    act.append(renameBtn, " ", visBtn);
+    act.append(dlBtn, " ", renameBtn, " ", visBtn);
     tr.append(act);
 
     body.append(tr);
@@ -456,16 +459,165 @@ async function saveEditCollection() {
 async function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
-  const isCol = tab === "collection";
-  $("#repoView").hidden = isCol;
-  $("#collectionView").hidden = !isCol;
-  if (isCol) {
+  $("#repoView").hidden = tab === "collection" || tab === "transfer";
+  $("#collectionView").hidden = tab !== "collection";
+  $("#transferView").hidden = tab !== "transfer";
+  stopJobsPolling();
+  if (tab === "collection") {
     await loadCollections();
     renderCollections();
+  } else if (tab === "transfer") {
+    loadJobs();
   } else {
     await loadRepos(tab);
     renderRepos();
   }
+}
+
+/* ----------------------------------------------------------------------- *
+ * Transfer (download / upload) + jobs
+ * ----------------------------------------------------------------------- */
+let jobsTimer = null;
+function stopJobsPolling() { if (jobsTimer) { clearInterval(jobsTimer); jobsTimer = null; } }
+function ensurePolling(anyRunning) {
+  if (anyRunning && !jobsTimer) jobsTimer = setInterval(loadJobs, 1500);
+  else if (!anyRunning) stopJobsPolling();
+}
+
+async function loadJobs() {
+  try {
+    const data = await api("/api/jobs");
+    renderJobs(data.jobs);
+  } catch { /* ignore transient poll errors */ }
+}
+
+function fmtElapsed(j) {
+  const end = j.ended_at || Date.now() / 1000;
+  const s = Math.max(0, Math.round(end - j.started_at));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function renderJobs(jobs) {
+  $("#jobsEmpty").hidden = jobs.length > 0;
+  $("#jobsCount").textContent = jobs.length ? `${jobs.length} job${jobs.length > 1 ? "s" : ""}` : "";
+  for (const j of jobs) {
+    const prev = state.jobStatus[j.id];
+    if (prev === "running" && j.status !== "running") {
+      const kind = j.status === "success" ? "ok" : j.status === "error" ? "err" : "info";
+      toast(`${j.kind} ${j.status}: ${j.repo_id}`, kind, 7000);
+    }
+    state.jobStatus[j.id] = j.status;
+  }
+  $("#jobsList").replaceChildren(...jobs.map(renderJobCard));
+  ensurePolling(jobs.some((j) => j.status === "running"));
+}
+
+function renderJobCard(j) {
+  const card = el("div", { className: "job" });
+  const head = el("div", { className: "job-head" });
+  const arrow = j.kind === "download" ? "⤓" : "⤒";
+  head.append(
+    el("span", { className: `badge ${j.status}` }, j.status),
+    el("span", { className: "job-title" }, `${arrow} ${j.repo_id}`),
+    el("span", { className: "job-meta" },
+      `${j.mode}${j.mode === "lerobot" ? " 🤖" : ""} · ${j.repo_type} · ${fmtElapsed(j)}`),
+  );
+  if (j.status === "running") {
+    const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
+    cancel.addEventListener("click", () => cancelJob(j.id));
+    head.append(cancel);
+  }
+  card.append(head);
+  const log = (j.log || []).join("\n");
+  if (log) card.append(el("pre", { className: "job-log" }, log));
+  return card;
+}
+
+async function cancelJob(id) {
+  try { await api(`/api/jobs/${id}/cancel`, { method: "POST" }); loadJobs(); }
+  catch (e) { toast(`Cancel failed: ${e.message}`, "err"); }
+}
+
+async function detectDownload() {
+  const id = $("#dlRepoId").value.trim();
+  const type = $("#dlRepoType").value;
+  const hint = $("#dlDetect");
+  if (!id.includes("/")) { hint.textContent = ""; hint.className = "hint"; return; }
+  hint.textContent = "checking…"; hint.className = "hint";
+  try {
+    const res = await api(`/api/detect/hub?repo_id=${encodeURIComponent(id)}&repo_type=${type}`);
+    $("#dlLerobot").checked = !!res.lerobot;
+    hint.textContent = res.lerobot ? "LeRobot dataset detected" : (type === "dataset" ? "not a LeRobot dataset" : "");
+    hint.className = "hint" + (res.lerobot ? " on" : "");
+  } catch { hint.textContent = ""; }
+}
+
+function autofillDlDir() {
+  const id = $("#dlRepoId").value.trim();
+  const dir = $("#dlLocalDir");
+  if (id.includes("/") && !dir.value.trim()) dir.value = `downloads/${id.split("/").pop()}`;
+}
+
+async function prefillDownload(r, type) {
+  await switchTab("transfer");
+  $("#dlRepoId").value = r.id;
+  $("#dlRepoType").value = type;
+  $("#dlLocalDir").value = `downloads/${r.name}`;
+  detectDownload();
+  $("#dlRepoId").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function startDownload() {
+  const repo_id = $("#dlRepoId").value.trim();
+  if (!repo_id.includes("/")) return toast("Enter a full repo id like user/name", "err");
+  const local_dir = $("#dlLocalDir").value.trim() || `downloads/${repo_id.split("/").pop()}`;
+  try {
+    await api("/api/transfer/download", {
+      method: "POST",
+      body: { repo_id, repo_type: $("#dlRepoType").value, local_dir, use_lerobot: $("#dlLerobot").checked },
+    });
+    toast(`Download started: ${repo_id}`, "info");
+    loadJobs();
+  } catch (e) { toast(`Failed to start: ${e.message}`, "err", 8000); }
+}
+
+async function detectUpload() {
+  const path = $("#upLocalDir").value.trim();
+  const hint = $("#upDetect");
+  if (!path) { hint.textContent = ""; hint.className = "hint"; return; }
+  hint.textContent = "checking…"; hint.className = "hint";
+  try {
+    const res = await api(`/api/detect/local?path=${encodeURIComponent(path)}`);
+    if (!res.exists) {
+      $("#upLerobot").checked = false;
+      hint.textContent = "folder not found"; hint.className = "hint";
+      return;
+    }
+    $("#upLerobot").checked = !!res.lerobot;
+    if (res.lerobot) $("#upRepoType").value = "dataset";
+    hint.textContent = res.lerobot ? "LeRobot dataset detected" : "plain folder";
+    hint.className = "hint" + (res.lerobot ? " on" : "");
+  } catch { hint.textContent = ""; }
+}
+
+async function startUpload() {
+  const repo_id = $("#upRepoId").value.trim();
+  const local_dir = $("#upLocalDir").value.trim();
+  if (!repo_id.includes("/")) return toast("Enter target repo id like user/name", "err");
+  if (!local_dir) return toast("Enter the local folder to upload", "err");
+  const useLerobot = $("#upLerobot").checked;
+  try {
+    await api("/api/transfer/upload", {
+      method: "POST",
+      body: {
+        repo_id, local_dir, use_lerobot: useLerobot,
+        repo_type: useLerobot ? "dataset" : $("#upRepoType").value,
+        private: $("#upPrivate").checked,
+      },
+    });
+    toast(`Upload started: ${repo_id}`, "info");
+    loadJobs();
+  } catch (e) { toast(`Failed to start: ${e.message}`, "err", 8000); }
 }
 
 function wire() {
@@ -497,6 +649,14 @@ function wire() {
 
   $("#colSearch").addEventListener("input", renderCollections);
   $("#colDeleteBtn").addEventListener("click", deleteSelectedCollections);
+
+  // transfer: download
+  $("#dlRepoId").addEventListener("change", () => { autofillDlDir(); detectDownload(); });
+  $("#dlRepoType").addEventListener("change", detectDownload);
+  $("#dlStart").addEventListener("click", startDownload);
+  // transfer: upload
+  $("#upLocalDir").addEventListener("change", detectUpload);
+  $("#upStart").addEventListener("click", startUpload);
 
   $("#editColCancel").addEventListener("click", () => ($("#editColModal").hidden = true));
   $("#editColSave").addEventListener("click", saveEditCollection);

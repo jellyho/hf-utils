@@ -16,3 +16,6 @@ Thumbs.db
 
 # Server logs
 *.log
+
+# Downloaded repos (default target for relative download paths)
+/downloads/
