@@ -11,6 +11,7 @@ The server binds to 127.0.0.1 only — it is meant to run on your machine.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -383,6 +384,96 @@ def job_cancel(job_id: str) -> dict:
     if not JOBS.cancel(job_id):
         raise HTTPException(status_code=409, detail="job not running / not cancellable")
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Local filesystem browsing (for the folder picker) — 127.0.0.1 only
+# --------------------------------------------------------------------------- #
+_MAX_FILES = 300
+
+
+def _drives() -> list[str]:
+    if os.name != "nt":
+        return []
+    try:
+        return list(os.listdrives())  # py3.12+
+    except Exception:
+        import string
+        return [f"{c}:\\" for c in string.ascii_uppercase if os.path.exists(f"{c}:\\")]
+
+
+@app.get("/api/fs/list")
+def fs_list(path: str = "") -> dict:
+    home = str(Path.home())
+    drives = _drives()
+
+    # empty path == "This PC" (drive list on Windows; home on POSIX)
+    if not path:
+        if drives:
+            return {"path": "", "display": "This PC", "parent": None, "home": home,
+                    "sep": os.sep, "drives": drives,
+                    "dirs": [{"name": d, "path": d} for d in drives],
+                    "files": [], "files_truncated": False, "is_lerobot": False}
+        path = home
+
+    try:
+        base = Path(path).expanduser()
+        if not base.is_absolute():
+            base = PROJECT_ROOT / base
+        base = base.resolve(strict=False)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"bad path: {exc}")
+
+    if not base.is_dir():
+        raise HTTPException(status_code=404, detail=f"not a directory: {base}")
+
+    dirs: list[dict] = []
+    files: list[dict] = []
+    try:
+        entries = sorted(os.scandir(base), key=lambda e: e.name.lower())
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"permission denied: {base}")
+    for entry in entries:
+        try:
+            if entry.is_dir():
+                dirs.append({"name": entry.name, "path": str(Path(entry.path))})
+            elif entry.is_file() and len(files) < _MAX_FILES:
+                files.append({"name": entry.name})
+        except OSError:
+            continue
+
+    parent: Optional[str] = str(base.parent)
+    if base.parent == base:  # drive / fs root -> go to "This PC"
+        parent = "" if drives else None
+
+    return {
+        "path": str(base), "display": str(base), "parent": parent, "home": home,
+        "sep": os.sep, "drives": drives,
+        "dirs": dirs, "files": files,
+        "files_truncated": len(files) >= _MAX_FILES,
+        "is_lerobot": (base / "meta" / "info.json").is_file(),
+    }
+
+
+class MkdirBody(BaseModel):
+    path: str
+    name: str
+
+
+@app.post("/api/fs/mkdir")
+def fs_mkdir(body: MkdirBody) -> dict:
+    name = body.name.strip().strip("/\\")
+    if not name or any(c in name for c in '<>:"/\\|?*'):
+        raise HTTPException(status_code=400, detail="invalid folder name")
+    base = Path(body.path).expanduser()
+    if not base.is_absolute():
+        base = PROJECT_ROOT / base
+    target = base / name
+    try:
+        target.mkdir(parents=False, exist_ok=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"could not create folder: {exc}")
+    return {"path": str(target.resolve(strict=False))}
 
 
 # --------------------------------------------------------------------------- #

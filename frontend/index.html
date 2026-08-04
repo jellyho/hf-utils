@@ -88,7 +88,10 @@
             <option value="model">model</option>
           </select></label>
         <label class="field"><span>Local folder (relative paths land in the repo dir)</span>
-          <input id="dlLocalDir" class="search" placeholder="downloads/my-dataset" autocomplete="off" /></label>
+          <div class="path-row">
+            <input id="dlLocalDir" class="search" placeholder="downloads/my-dataset" autocomplete="off" />
+            <button class="btn" type="button" id="dlBrowse">Browse…</button>
+          </div></label>
         <label class="checkline">
           <input type="checkbox" id="dlLerobot" /><span>Use LeRobot API</span>
           <span class="hint" id="dlDetect"></span></label>
@@ -98,7 +101,10 @@
       <div class="panel">
         <h3>⤒ Upload to Hub</h3>
         <label class="field"><span>Local folder</span>
-          <input id="upLocalDir" class="search" placeholder="C:\path\to\dataset" autocomplete="off" /></label>
+          <div class="path-row">
+            <input id="upLocalDir" class="search" placeholder="/path/to/dataset" autocomplete="off" />
+            <button class="btn" type="button" id="upBrowse">Browse…</button>
+          </div></label>
         <label class="field"><span>Target repo ID</span>
           <input id="upRepoId" class="search" placeholder="jellyho/my-dataset" autocomplete="off" /></label>
         <label class="field"><span>Type</span>
@@ -155,6 +161,29 @@
       <div class="modal-actions">
         <button class="btn ghost" id="editColCancel">Cancel</button>
         <button class="btn primary" id="editColSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Folder picker -->
+  <div class="modal-backdrop" id="fsModal" hidden>
+    <div class="modal fs-modal">
+      <h3 id="fsTitle">Choose a folder</h3>
+      <div class="fs-bar">
+        <button class="btn tiny ghost" type="button" id="fsRoot" title="Top level">⌆</button>
+        <button class="btn tiny ghost" type="button" id="fsHome" title="Home">⌂</button>
+        <button class="btn tiny ghost" type="button" id="fsUp" title="Up one level">↑</button>
+        <input class="search fs-path" id="fsPath" readonly />
+      </div>
+      <div class="fs-list" id="fsList"></div>
+      <div class="fs-info" id="fsInfo"></div>
+      <div class="fs-newrow">
+        <input class="search" id="fsNewName" placeholder="new-folder-name" autocomplete="off" />
+        <button class="btn tiny" type="button" id="fsMkdir">+ New folder</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="fsCancel">Cancel</button>
+        <button class="btn primary" type="button" id="fsSelect">Select this folder</button>
       </div>
     </div>
   </div>

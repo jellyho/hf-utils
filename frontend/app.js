@@ -620,6 +620,82 @@ async function startUpload() {
   } catch (e) { toast(`Failed to start: ${e.message}`, "err", 8000); }
 }
 
+/* ----------------------------------------------------------------------- *
+ * Folder picker (browse the local filesystem — cross-platform)
+ * ----------------------------------------------------------------------- */
+const fsPicker = { current: "", parent: null, home: "", sep: "/", target: null };
+
+function openFolderPicker(targetId, title) {
+  fsPicker.target = targetId;
+  $("#fsTitle").textContent = title;
+  $("#fsNewName").value = "";
+  $("#fsModal").hidden = false;
+  const cur = $("#" + targetId).value.trim();
+  const looksAbsolute = /^([A-Za-z]:[\\/]|[\\/]|~)/.test(cur);
+  fsNavigate(looksAbsolute ? cur : "~");
+}
+
+async function fsNavigate(path) {
+  try {
+    const data = await api(`/api/fs/list?path=${encodeURIComponent(path)}`);
+    fsPicker.current = data.path;
+    fsPicker.parent = data.parent;
+    fsPicker.home = data.home;
+    fsPicker.sep = data.sep;
+    fsRenderList(data);
+  } catch (e) {
+    if (path !== "~" && path !== "") return fsNavigate("~");
+    if (path === "~") return fsNavigate("");
+    toast(`Cannot open folder: ${e.message}`, "err");
+  }
+}
+
+function fsRenderList(data) {
+  $("#fsPath").value = data.path || (data.drives.length ? "This PC" : "/");
+  const info = $("#fsInfo");
+  if (data.is_lerobot) {
+    info.textContent = "🤖 LeRobot dataset (has meta/info.json)";
+    info.className = "fs-info on";
+  } else {
+    info.textContent = data.files_truncated ? `showing first ${data.files.length} files` : "";
+    info.className = "fs-info";
+  }
+  const list = $("#fsList");
+  list.replaceChildren();
+  for (const d of data.dirs) {
+    const row = el("div", { className: "fs-row dir" },
+      el("span", { className: "fs-ic" }, "📁"), el("span", {}, d.name));
+    row.addEventListener("click", () => fsNavigate(d.path));
+    list.append(row);
+  }
+  for (const f of data.files) {
+    list.append(el("div", { className: "fs-row file" },
+      el("span", { className: "fs-ic" }, "📄"), el("span", {}, f.name)));
+  }
+  if (!data.dirs.length && !data.files.length) list.append(el("div", { className: "fs-empty" }, "(empty folder)"));
+  $("#fsUp").disabled = data.parent === null;
+}
+
+function fsSelectCurrent() {
+  if (!fsPicker.current) return toast("Navigate into a folder first", "err");
+  const input = $("#" + fsPicker.target);
+  input.value = fsPicker.current;
+  $("#fsModal").hidden = true;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function fsMkdir() {
+  const name = $("#fsNewName").value.trim();
+  if (!name) return;
+  if (!fsPicker.current) return toast("Open a folder to create in", "err");
+  try {
+    const res = await api("/api/fs/mkdir", { method: "POST", body: { path: fsPicker.current, name } });
+    $("#fsNewName").value = "";
+    toast(`Created ${name}`, "ok");
+    fsNavigate(res.path);
+  } catch (e) { toast(`Create failed: ${e.message}`, "err"); }
+}
+
 function wire() {
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => switchTab(t.dataset.tab)));
@@ -657,6 +733,17 @@ function wire() {
   // transfer: upload
   $("#upLocalDir").addEventListener("change", detectUpload);
   $("#upStart").addEventListener("click", startUpload);
+
+  // folder picker
+  $("#dlBrowse").addEventListener("click", () => openFolderPicker("dlLocalDir", "Choose download folder"));
+  $("#upBrowse").addEventListener("click", () => openFolderPicker("upLocalDir", "Choose folder to upload"));
+  $("#fsRoot").addEventListener("click", () => fsNavigate(fsPicker.sep === "/" ? "/" : ""));
+  $("#fsHome").addEventListener("click", () => fsNavigate(fsPicker.home || "~"));
+  $("#fsUp").addEventListener("click", () => { if (fsPicker.parent !== null) fsNavigate(fsPicker.parent); });
+  $("#fsSelect").addEventListener("click", fsSelectCurrent);
+  $("#fsCancel").addEventListener("click", () => ($("#fsModal").hidden = true));
+  $("#fsMkdir").addEventListener("click", fsMkdir);
+  $("#fsNewName").addEventListener("keydown", (e) => { if (e.key === "Enter") fsMkdir(); });
 
   $("#editColCancel").addEventListener("click", () => ($("#editColModal").hidden = true));
   $("#editColSave").addEventListener("click", saveEditCollection);

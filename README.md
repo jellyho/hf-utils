@@ -28,6 +28,9 @@ through the website one repo at a time.
   uses `LeRobotDataset(root=...).push_to_hub(...)` so the `codebase_version` tag and dataset
   card are written correctly.
 - The "Use LeRobot API" checkbox auto-toggles from detection but you can override it.
+- **Browse…** opens a folder picker so you can navigate the local filesystem and pick the
+  download target / upload source instead of pasting a path (with "New folder" + a LeRobot
+  badge when a folder contains `meta/info.json`). Works on Windows and Linux/macOS.
 - Each transfer runs in a **subprocess** (so torch/lerobot never load into the web server),
   streams its log to the UI, and can be cancelled mid-run.
 
@@ -51,6 +54,11 @@ through the website one repo at a time.
 .\run.ps1
 ```
 
+**Linux / macOS:**
+```bash
+./run.sh
+```
+
 **Any OS (manual):**
 ```bash
 python -m venv .venv
@@ -59,7 +67,9 @@ pip install -r requirements.txt
 python -m backend.main
 ```
 
-Then open <http://127.0.0.1:8000>. The server binds to `127.0.0.1` only.
+Then open <http://127.0.0.1:8000>. The server binds to `127.0.0.1` only — including the
+filesystem-browsing endpoints used by the folder picker, so they're reachable only from
+your own machine.
 
 ## Project layout
 
@@ -106,4 +116,7 @@ POST /api/transfer/upload        {repo_id, repo_type, local_dir, private, use_le
 GET  /api/jobs                             # all transfer jobs (short log tail)
 GET  /api/jobs/{id}                        # one job (full log tail)
 POST /api/jobs/{id}/cancel
+
+GET  /api/fs/list?path=                     # browse a local dir (drives/home when empty)
+POST /api/fs/mkdir               {path, name}
 ```
