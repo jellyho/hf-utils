@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HF Util</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤗</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🤗</span>
+      <span>HF&nbsp;Util</span>
+    </div>
+    <div class="who" id="who">…</div>
+    <button class="btn ghost" id="refreshBtn" title="Reload current tab">↻ Refresh</button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="model">Models</button>
+    <button class="tab" data-tab="dataset">Datasets</button>
+    <button class="tab" data-tab="collection">Collections</button>
+  </nav>
+
+  <!-- Repo view (models & datasets share this) -->
+  <section class="view" id="repoView">
+    <div class="toolbar">
+      <input class="search" id="repoSearch" type="search" placeholder="Filter by name…" />
+      <select class="select" id="repoVisFilter" title="Visibility filter">
+        <option value="all">All</option>
+        <option value="public">Public only</option>
+        <option value="private">Private only</option>
+      </select>
+      <select class="select" id="repoSort" title="Sort">
+        <option value="modified">Recently modified</option>
+        <option value="name">Name (A→Z)</option>
+        <option value="downloads">Most downloads</option>
+        <option value="likes">Most likes</option>
+      </select>
+      <span class="spacer"></span>
+      <span class="count" id="repoCount"></span>
+      <button class="btn danger" id="repoDeleteBtn" disabled>Delete selected</button>
+    </div>
+
+    <div class="tablewrap">
+      <table class="grid" id="repoTable">
+        <thead>
+          <tr>
+            <th class="c-check"><input type="checkbox" id="repoSelectAll" title="Select all filtered" /></th>
+            <th class="c-name">Name</th>
+            <th class="c-vis">Visibility</th>
+            <th class="c-num">Downloads</th>
+            <th class="c-num">Likes</th>
+            <th class="c-date">Modified</th>
+            <th class="c-act">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="repoBody"></tbody>
+      </table>
+      <div class="empty" id="repoEmpty" hidden></div>
+    </div>
+  </section>
+
+  <!-- Collections view -->
+  <section class="view" id="collectionView" hidden>
+    <div class="toolbar">
+      <input class="search" id="colSearch" type="search" placeholder="Filter by title…" />
+      <span class="spacer"></span>
+      <span class="count" id="colCount"></span>
+      <button class="btn danger" id="colDeleteBtn" disabled>Delete selected</button>
+    </div>
+    <div class="collections" id="colList"></div>
+    <div class="empty" id="colEmpty" hidden></div>
+  </section>
+
+  <!-- Confirm delete modal -->
+  <div class="modal-backdrop" id="confirmModal" hidden>
+    <div class="modal">
+      <h3 id="confirmTitle">Confirm deletion</h3>
+      <p class="modal-sub" id="confirmSub"></p>
+      <ul class="confirm-list" id="confirmList"></ul>
+      <p class="warn">⚠ This is permanent and cannot be undone. Type <b>DELETE</b> to confirm.</p>
+      <input class="search" id="confirmInput" placeholder="DELETE" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="btn ghost" id="confirmCancel">Cancel</button>
+        <button class="btn danger" id="confirmOk" disabled>Delete permanently</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit collection modal -->
+  <div class="modal-backdrop" id="editColModal" hidden>
+    <div class="modal">
+      <h3>Edit collection</h3>
+      <label class="field">
+        <span>Title</span>
+        <input class="search" id="editColTitle" />
+      </label>
+      <label class="field">
+        <span>Description</span>
+        <textarea class="search" id="editColDesc" rows="3"></textarea>
+      </label>
+      <label class="checkline">
+        <input type="checkbox" id="editColPrivate" /> <span>Private</span>
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" id="editColCancel">Cancel</button>
+        <button class="btn primary" id="editColSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
