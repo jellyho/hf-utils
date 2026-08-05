@@ -459,16 +459,19 @@ async function saveEditCollection() {
 async function switchTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
-  $("#repoView").hidden = tab === "collection" || tab === "transfer";
+  const isRepo = tab === "model" || tab === "dataset";
+  $("#repoView").hidden = !isRepo;
   $("#collectionView").hidden = tab !== "collection";
   $("#transferView").hidden = tab !== "transfer";
+  $("#lerobotView").hidden = tab !== "lerobot";
   stopJobsPolling();
+  if (typeof dsOnTab === "function") dsOnTab(tab === "lerobot");
   if (tab === "collection") {
     await loadCollections();
     renderCollections();
   } else if (tab === "transfer") {
     loadJobs();
-  } else {
+  } else if (isRepo) {
     await loadRepos(tab);
     renderRepos();
   }

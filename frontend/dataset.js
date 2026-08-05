@@ -1,0 +1,329 @@
+"use strict";
+
+/* ----------------------------------------------------------------------- *
+ * LeRobot dataset viewer.
+ *
+ * Playback model: a v3.0 dataset packs many episodes into ONE mp4 per camera, so an
+ * episode is a *window* [from_timestamp, to_timestamp] into a shared file. We point one
+ * <video> per camera at the whole file (served with HTTP Range) and seek inside it —
+ * measured at ~6 ms per scrub step for 3 cameras, with 0 ms spread between them.
+ *
+ * Reuses $, el, api, toast and openFolderPicker from app.js (loaded before this file).
+ * ----------------------------------------------------------------------- */
+
+const DS = {
+  root: null,
+  info: null,          // /api/ds/open payload
+  eps: [],             // episode rows
+  ep: null,            // selected episode row
+  fps: 30,
+  videos: {},          // camera key -> <video>
+  masterKey: null,     // camera that drives the clock
+  frame: 0,
+  playing: false,
+  rafId: null,
+  speed: 1,
+  seekPending: false,
+};
+
+const MAX_EPISODE_ROWS = 1000;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function dsVideoUrl(key, chunk, file) {
+  return `/api/ds/video?root=${encodeURIComponent(DS.root)}` +
+    `&key=${encodeURIComponent(key)}&chunk=${chunk}&file=${file}`;
+}
+
+const fmtDur = (s) => {
+  if (!isFinite(s)) return "–";
+  const m = Math.floor(s / 60), r = s - m * 60;
+  return m ? `${m}m ${r.toFixed(1)}s` : `${r.toFixed(1)}s`;
+};
+
+/* ----------------------------------------------------------------------- *
+ * Open a dataset
+ * ----------------------------------------------------------------------- */
+async function dsOpen(path) {
+  const root = (path ?? $("#dsPath").value).trim();
+  if (!root) return toast("Pick a dataset folder first", "err");
+  stopPlayback();
+  $("#dsInfo").textContent = "opening…";
+  try {
+    const info = await api(`/api/ds/open?root=${encodeURIComponent(root)}`);
+    const eps = await api(`/api/ds/episodes?root=${encodeURIComponent(info.root)}`);
+    DS.root = info.root;
+    DS.info = info;
+    DS.eps = eps.items;
+    DS.fps = info.fps || 30;
+    DS.videos = {};
+    DS.ep = null;
+    $("#dsPath").value = info.root;
+    try { localStorage.setItem("hfutil.dsRoot", info.root); } catch { /* private mode */ }
+
+    $("#dsEmpty").hidden = true;
+    $("#dsBody").hidden = false;
+    $("#dsInfo").textContent =
+      `${info.name} · ${info.codebase_version} · ${info.total_episodes} episodes · ` +
+      `${info.total_frames.toLocaleString()} frames · ${info.fps} fps` +
+      (info.robot_type ? ` · ${info.robot_type}` : "");
+    (info.warnings || []).forEach((w) => toast(w, "err", 9000));
+    if (!info.cameras.length) toast("This dataset has no video features to play.", "err", 8000);
+
+    $("#dsCams").replaceChildren();
+    renderEpisodeList();
+    if (DS.eps.length) selectEpisode(DS.eps[0].ep);
+  } catch (e) {
+    $("#dsInfo").textContent = "";
+    $("#dsEmpty").hidden = false;
+    $("#dsBody").hidden = true;
+    toast(`Cannot open dataset: ${e.message}`, "err", 12000);
+  }
+}
+
+/* ----------------------------------------------------------------------- *
+ * Episode list
+ * ----------------------------------------------------------------------- */
+function visibleEpisodes() {
+  const q = $("#epFilter").value.trim().toLowerCase();
+  if (!q) return DS.eps;
+  return DS.eps.filter((e) =>
+    String(e.ep).includes(q) || (e.tasks[0] || "").toLowerCase().includes(q));
+}
+
+function renderEpisodeList() {
+  const rows = visibleEpisodes();
+  const shown = rows.slice(0, MAX_EPISODE_ROWS);
+  const list = $("#epList");
+  list.replaceChildren();
+
+  for (const e of shown) {
+    const row = el("div", { className: "ep-row" + (DS.ep && DS.ep.ep === e.ep ? " active" : "") });
+    row.dataset.ep = e.ep;
+    row.append(
+      el("span", { className: "ep-idx" }, `#${e.ep}`),
+      el("span", { className: "ep-len" }, `${e.length}f`),
+      el("span", { className: "ep-dur" }, fmtDur(e.length / DS.fps)),
+      el("span", { className: "ep-task", title: e.tasks[0] || "" }, e.tasks[0] || "—"),
+    );
+    row.addEventListener("click", () => selectEpisode(e.ep));
+    list.append(row);
+  }
+  if (rows.length > shown.length) {
+    list.append(el("div", { className: "fs-note" },
+      `showing first ${shown.length} of ${rows.length} — use the filter to narrow`));
+  }
+  if (!rows.length) list.append(el("div", { className: "fs-empty" }, "no episodes match"));
+  $("#epCount").textContent = `${rows.length} / ${DS.eps.length}`;
+}
+
+/* ----------------------------------------------------------------------- *
+ * Camera players
+ * ----------------------------------------------------------------------- */
+async function ensurePlayers(ep) {
+  const keys = Object.keys(ep.videos);
+  DS.masterKey = keys[0] || null;
+  const box = $("#dsCams");
+
+  // Rebuild only when the set of cameras changes; otherwise keep the elements (and
+  // their buffered data) and just retarget/seek them.
+  const existing = Object.keys(DS.videos);
+  const same = existing.length === keys.length && existing.every((k) => keys.includes(k));
+  if (!same) {
+    box.replaceChildren();
+    DS.videos = {};
+    for (const key of keys) {
+      const cam = (DS.info.cameras || []).find((c) => c.key === key) || {};
+      const v = el("video", { muted: true, playsInline: true, preload: "auto" });
+      v.className = "ds-video";
+      const cell = el("div", { className: "ds-cam" },
+        v, el("div", { className: "ds-camlabel" }, shortCam(key) + (cam.width ? ` · ${cam.width}×${cam.height}` : "")));
+      box.append(cell);
+      DS.videos[key] = v;
+    }
+  }
+
+  // Point each player at the right shared file. src changes only when the episode lives in
+  // a different chunk/file, so stepping through episodes inside one file never reloads.
+  // When it *does* change we must wait for metadata: seeking a video that hasn't loaded
+  // yet is silently ignored, which would leave a multi-file dataset on the wrong frame.
+  const pending = [];
+  for (const key of keys) {
+    const w = ep.videos[key];
+    const abs = new URL(dsVideoUrl(key, w.chunk, w.file), location.href).href;
+    const v = DS.videos[key];
+    if (v.src !== abs) {
+      v.src = abs;
+      pending.push(new Promise((res) => {
+        const done = () => res();
+        v.addEventListener("loadedmetadata", done, { once: true });
+        v.addEventListener("error", done, { once: true });
+        setTimeout(done, 15000);
+      }));
+    }
+    v.playbackRate = DS.speed;
+  }
+  if (pending.length) await Promise.all(pending);
+}
+
+const shortCam = (key) => key.replace(/^observation\.images\./, "");
+
+/* ----------------------------------------------------------------------- *
+ * Selection + transport
+ * ----------------------------------------------------------------------- */
+let selectToken = 0;
+
+async function selectEpisode(index) {
+  const ep = DS.eps.find((e) => e.ep === index);
+  if (!ep) return;
+  const token = ++selectToken;
+  stopPlayback();
+  DS.ep = ep;
+  await ensurePlayers(ep);
+  // A newer click landed while we waited for video metadata — let that one win.
+  if (token !== selectToken) return;
+
+  $("#dsSlider").max = String(Math.max(0, ep.length - 1));
+  $("#dsSlider").value = "0";
+  document.querySelectorAll("#epList .ep-row").forEach((r) =>
+    r.classList.toggle("active", Number(r.dataset.ep) === index));
+
+  $("#dsEpMeta").replaceChildren(
+    el("span", { className: "badge muted" }, `episode ${ep.ep}`),
+    el("span", { className: "badge muted" }, `${ep.length} frames`),
+    el("span", { className: "badge muted" }, fmtDur(ep.length / DS.fps)),
+    el("span", { className: "ds-tasktext" }, ep.tasks[0] || "(no task)"),
+  );
+  seekToFrame(0, true);
+}
+
+function seekToFrame(f, force = false) {
+  if (!DS.ep) return;
+  DS.frame = clamp(Math.round(f), 0, Math.max(0, DS.ep.length - 1));
+  const eps = 0.5 / DS.fps;
+  for (const [key, v] of Object.entries(DS.videos)) {
+    const w = DS.ep.videos[key];
+    if (!w) continue;
+    // Clamp inside the episode window so we never spill into the neighbouring episode.
+    const t = Math.min(w.from_timestamp + DS.frame / DS.fps, w.to_timestamp - eps);
+    if (force || Math.abs(v.currentTime - t) > eps) v.currentTime = t;
+  }
+  updateTransport();
+}
+
+function updateTransport() {
+  if (!DS.ep) return;
+  $("#dsSlider").value = String(DS.frame);
+  const t = DS.frame / DS.fps;
+  $("#dsFrame").textContent =
+    `${DS.frame} / ${DS.ep.length - 1}  ·  ${t.toFixed(2)}s`;
+  $("#dsPlay").textContent = DS.playing ? "❚❚" : "▶";
+}
+
+/* ----------------------------------------------------------------------- *
+ * Playback — camera 0 is the clock, rAF drives the UI, slaves get drift-corrected
+ * ----------------------------------------------------------------------- */
+function playbackTick() {
+  if (!DS.playing || !DS.ep || !DS.masterKey) return;
+  const master = DS.videos[DS.masterKey];
+  const w = DS.ep.videos[DS.masterKey];
+  const tol = 1.5 / DS.fps;
+
+  const f = Math.round((master.currentTime - w.from_timestamp) * DS.fps);
+  DS.frame = clamp(f, 0, DS.ep.length - 1);
+
+  for (const [key, v] of Object.entries(DS.videos)) {
+    if (key === DS.masterKey) continue;
+    const ww = DS.ep.videos[key];
+    if (!ww) continue;
+    const want = ww.from_timestamp + DS.frame / DS.fps;
+    if (Math.abs(v.currentTime - want) > tol) v.currentTime = want;
+  }
+  updateTransport();
+
+  // Stop at the episode boundary — the file keeps going into the next episode.
+  if (DS.frame >= DS.ep.length - 1 || master.currentTime >= w.to_timestamp - 0.5 / DS.fps) {
+    stopPlayback();
+    return;
+  }
+  DS.rafId = requestAnimationFrame(playbackTick);
+}
+
+async function startPlayback() {
+  if (!DS.ep || !DS.masterKey) return;
+  if (DS.frame >= DS.ep.length - 1) seekToFrame(0, true);
+  DS.playing = true;
+  updateTransport();
+  try {
+    await Promise.all(Object.values(DS.videos).map((v) => {
+      v.playbackRate = DS.speed;
+      return v.play();
+    }));
+  } catch (e) {
+    stopPlayback();
+    return toast(`Playback failed: ${e.message}`, "err", 8000);
+  }
+  DS.rafId = requestAnimationFrame(playbackTick);
+}
+
+function stopPlayback() {
+  DS.playing = false;
+  if (DS.rafId) { cancelAnimationFrame(DS.rafId); DS.rafId = null; }
+  Object.values(DS.videos).forEach((v) => { try { v.pause(); } catch { /* not ready */ } });
+  updateTransport();
+}
+
+const togglePlayback = () => (DS.playing ? stopPlayback() : startPlayback());
+
+/* ----------------------------------------------------------------------- *
+ * Wiring
+ * ----------------------------------------------------------------------- */
+function dsWire() {
+  $("#dsBrowse").addEventListener("click", () => openFolderPicker("dsPath", "Choose a LeRobot dataset folder"));
+  $("#dsOpen").addEventListener("click", () => dsOpen());
+  $("#dsPath").addEventListener("keydown", (e) => { if (e.key === "Enter") dsOpen(); });
+  $("#epFilter").addEventListener("input", renderEpisodeList);
+
+  $("#dsPlay").addEventListener("click", togglePlayback);
+  $("#dsSlider").addEventListener("input", (e) => {
+    if (DS.playing) stopPlayback();
+    seekToFrame(Number(e.target.value));
+  });
+  $("#dsSpeed").addEventListener("change", (e) => {
+    DS.speed = Number(e.target.value);
+    Object.values(DS.videos).forEach((v) => { v.playbackRate = DS.speed; });
+  });
+
+  // Keyboard transport, only while the LeRobot tab is showing and not typing in a field.
+  document.addEventListener("keydown", (e) => {
+    if ($("#lerobotView").hidden || !DS.ep) return;
+    // Don't steal keys from an open modal (folder picker, confirm dialog, …).
+    if (document.querySelector(".modal-backdrop:not([hidden])")) return;
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    if (e.key === " ") { e.preventDefault(); togglePlayback(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); stopPlayback(); seekToFrame(DS.frame + (e.shiftKey ? 10 : 1)); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); stopPlayback(); seekToFrame(DS.frame - (e.shiftKey ? 10 : 1)); }
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const i = DS.eps.findIndex((x) => x.ep === DS.ep.ep);
+      const next = DS.eps[i + (e.key === "ArrowDown" ? 1 : -1)];
+      if (next) {
+        selectEpisode(next.ep);
+        document.querySelector(`#epList .ep-row[data-ep="${next.ep}"]`)
+          ?.scrollIntoView({ block: "nearest" });
+      }
+    }
+  });
+
+  try {
+    const last = localStorage.getItem("hfutil.dsRoot");
+    if (last) $("#dsPath").value = last;
+  } catch { /* private mode */ }
+}
+
+/** Called by app.js when the LeRobot tab is shown or hidden. */
+function dsOnTab(active) {
+  if (!active) stopPlayback();
+}
+
+dsWire();

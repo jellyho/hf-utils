@@ -22,6 +22,7 @@
     <button class="tab" data-tab="dataset">Datasets</button>
     <button class="tab" data-tab="collection">Collections</button>
     <button class="tab" data-tab="transfer">Transfer</button>
+    <button class="tab" data-tab="lerobot">LeRobot</button>
   </nav>
 
   <!-- Repo view (models & datasets share this) -->
@@ -165,6 +166,48 @@
     </div>
   </div>
 
+  <!-- LeRobot dataset viewer -->
+  <section class="view" id="lerobotView" hidden>
+    <div class="toolbar">
+      <input class="search ds-path" id="dsPath" type="text" placeholder="path to a local LeRobot dataset folder" autocomplete="off" />
+      <button class="btn" type="button" id="dsBrowse">Browse…</button>
+      <button class="btn primary" type="button" id="dsOpen">Open</button>
+      <span class="spacer"></span>
+      <span class="count" id="dsInfo"></span>
+    </div>
+
+    <div class="empty" id="dsEmpty">Pick a local LeRobot dataset folder (v3.0) to start.</div>
+
+    <div class="ds-body" id="dsBody" hidden>
+      <aside class="ds-side">
+        <div class="ds-side-head">
+          <input class="search" id="epFilter" type="search" placeholder="filter episodes / task…" />
+          <span class="count" id="epCount"></span>
+        </div>
+        <div class="ds-eplist" id="epList"></div>
+      </aside>
+
+      <main class="ds-main">
+        <div class="ds-cams" id="dsCams"></div>
+
+        <div class="ds-transport">
+          <button class="btn" type="button" id="dsPlay" title="Play / pause (space)">▶</button>
+          <input class="ds-slider" id="dsSlider" type="range" min="0" max="0" value="0" step="1" />
+          <span class="mono" id="dsFrame">–</span>
+          <select class="select" id="dsSpeed" title="Playback speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+        </div>
+
+        <div class="ds-meta" id="dsEpMeta"></div>
+      </main>
+    </div>
+  </section>
+
   <!-- Folder picker -->
   <div class="modal-backdrop" id="fsModal" hidden>
     <div class="modal fs-modal">
@@ -191,5 +234,6 @@
   <div class="toasts" id="toasts"></div>
 
   <script src="/app.js"></script>
+  <script src="/dataset.js"></script>
 </body>
 </html>

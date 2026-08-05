@@ -26,6 +26,7 @@ from huggingface_hub import HfApi
 from huggingface_hub.utils import HfHubHTTPError
 
 from .jobs import JOBS
+from .routes_dataset import router as dataset_router
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
@@ -483,6 +484,8 @@ def fs_mkdir(body: MkdirBody) -> dict:
 async def http_exc_handler(_req, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
+
+app.include_router(dataset_router)
 
 # Mounted LAST so /api/* routes above take precedence.
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

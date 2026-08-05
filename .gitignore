@@ -4,6 +4,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Packaging artifacts (`pip install -e .`)
+build/
+dist/
+*.egg-info/
+
 # Editor / OS
 .vscode/
 .idea/

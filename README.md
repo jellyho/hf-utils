@@ -15,6 +15,7 @@ through the website one repo at a time.
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub, as background jobs with live logs + cancel. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
+| **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport. |
 
 - Shows downloads, likes, last-modified for every repo.
 - Bulk delete requires typing `DELETE` in a confirmation dialog (deletes are permanent).
@@ -33,6 +34,22 @@ through the website one repo at a time.
   badge when a folder contains `meta/info.json`). Works on Windows and Linux/macOS.
 - Each transfer runs in a **subprocess** (so torch/lerobot never load into the web server),
   streams its log to the UI, and can be cancelled mid-run.
+
+### LeRobot viewer
+
+Open any local v3.0 dataset folder (including one straight out of the HF cache).
+
+- **Episode list** with frame count, duration and task; filter by index or task text.
+- **All cameras in sync.** A v3.0 dataset packs many episodes into one MP4 per camera, so an
+  episode is a window `[from_timestamp, to_timestamp]` into a shared file. The viewer serves
+  the whole file over HTTP Range and seeks inside it — no clip extraction, no transcoding.
+  Measured on a 244 MB / 357 s 3-camera dataset: **~6 ms per scrub step, 0 ms spread between
+  cameras, 0 dropped frames**, and it stays that fast for hour-long files because LeRobot
+  writes a keyframe every ~2 frames.
+- **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
+- Everything is derived from `meta/info.json` — cameras are the features with
+  `dtype: "video"`, paths come from the `data_path`/`video_path` templates — so it works on
+  any v3.0 dataset, not just one robot. v2.x datasets are rejected with a conversion hint.
 
 ## Requirements
 
@@ -75,17 +92,41 @@ your own machine.
 
 ```
 hf-util/
-├── backend/
-│   ├── main.py        # FastAPI app: endpoints for repos / collections / transfer / jobs
-│   ├── jobs.py        # background job manager (spawns worker subprocesses, tails logs)
-│   └── worker.py      # runs one download/upload job (huggingface_hub or lerobot), then exits
+├── hfutil/                 # reusable library — no FastAPI, no lerobot/torch at import time
+│   └── dataset/
+│       ├── meta.py         # LeRobot v3.0 metadata reader (pyarrow only)
+│       └── video.py        # video path resolution, ffmpeg/font discovery, codec probe
+├── backend/                # the local web app
+│   ├── main.py             # FastAPI app: repos / collections / transfer / jobs
+│   ├── routes_dataset.py   # /api/ds/* — the LeRobot viewer endpoints
+│   ├── jobs.py             # background job manager (spawns worker subprocesses, tails logs)
+│   └── worker.py           # runs one heavy job (huggingface_hub or lerobot), then exits
 ├── frontend/
-│   ├── index.html     # single-page GUI
-│   ├── app.js         # all UI logic (vanilla JS, no build step)
+│   ├── index.html          # single-page GUI
+│   ├── app.js              # repos / collections / transfer / folder picker
+│   ├── dataset.js          # the LeRobot viewer
 │   └── styles.css
+├── pyproject.toml          # `pip install -e .` — lets other projects import hfutil
 ├── requirements.txt
-├── run.ps1            # one-command launcher (creates venv on first run)
+├── run.ps1 / run.sh        # one-command launchers (create the venv on first run)
 └── README.md
+```
+
+### Using `hfutil` from another project
+
+The dataset logic is deliberately separate from the web app, so other repos can depend on it
+instead of copying code:
+
+```bash
+pip install "hf-utils @ git+https://github.com/jellyho/hf-utils"
+```
+```python
+from hfutil.dataset import meta
+
+root = meta.resolve_root("~/lerobot_data/my_dataset")
+info = meta.describe(root)          # cameras, fps, plottable features, tasks
+eps  = meta.episodes(root)          # per-episode length / task / video windows
+s    = meta.series(root, ep=0, keys=["action.joint_pos"])
 ```
 
 ## Safety notes
@@ -119,4 +160,11 @@ POST /api/jobs/{id}/cancel
 
 GET  /api/fs/list?path=                     # browse a local dir (drives/home when empty)
 POST /api/fs/mkdir               {path, name}
+
+GET  /api/ds/capabilities                   # is ffmpeg / a usable font available?
+GET  /api/ds/open?root=                     # dataset header: cameras, fps, features, tasks
+GET  /api/ds/episodes?root=                 # per-episode length, task, video windows
+GET  /api/ds/video?root=&key=&chunk=&file=  # the shared MP4, served with HTTP Range
+GET  /api/ds/videoprobe?root=&key=&…        # codec / resolution (PyAV)
+GET  /api/ds/series?root=&ep=&keys=&max_points=   # downsampled per-episode timeseries
 ```

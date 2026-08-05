@@ -215,6 +215,52 @@ td.c-check { text-align: center; }
 .badge.error   { color: var(--danger); border-color: rgba(239,68,68,.45); }
 .badge.cancelled { color: var(--muted); }
 
+/* ---- LeRobot dataset viewer ---- */
+.ds-path { flex: 1; min-width: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
+.ds-body { display: grid; grid-template-columns: 340px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .ds-body { grid-template-columns: 1fr; } }
+
+.ds-side {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); overflow: hidden;
+}
+.ds-side-head { display: flex; gap: 8px; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); }
+.ds-side-head .search { flex: 1; min-width: 0; }
+.ds-eplist { max-height: 68vh; overflow: auto; }
+.ep-row {
+  display: grid; grid-template-columns: 46px 46px 62px 1fr; gap: 8px; align-items: center;
+  padding: 7px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px;
+}
+.ep-row:hover { background: var(--panel-2); }
+.ep-row.active { background: rgba(79, 140, 255, 0.14); }
+.ep-idx { font-weight: 700; font-family: ui-monospace, monospace; }
+.ep-len, .ep-dur { color: var(--muted); font-family: ui-monospace, monospace; }
+.ep-task { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ds-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Grid, not flex-wrap: a wrapped flex item stretches to the full row, which made the
+   last camera render twice the size of the others. auto-fit keeps every panel equal. */
+.ds-cams { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.ds-cam {
+  position: relative; border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: #000; min-width: 0;
+}
+.ds-video { display: block; width: 100%; height: auto; background: #000; }
+.ds-camlabel {
+  position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px; font-weight: 600;
+}
+
+.ds-transport {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 10px 12px;
+}
+.ds-slider { flex: 1; min-width: 0; accent-color: var(--accent-2); }
+.mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ds-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ds-tasktext { color: var(--muted); font-size: 13px; }
+
 /* ---- folder picker ---- */
 .path-row { display: flex; gap: 8px; }
 .path-row .search { flex: 1; }
