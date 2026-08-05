@@ -208,6 +208,17 @@
         </div>
 
         <div class="ds-meta" id="dsEpMeta"></div>
+
+        <section class="ds-plots">
+          <div class="plot-head">
+            <div class="plot-picker" id="plotPicker"></div>
+            <div class="plot-legend" id="plotLegend"></div>
+            <span class="spacer"></span>
+            <span class="mono" id="plotCursor"></span>
+          </div>
+          <div class="empty" id="plotEmpty">Pick a feature above to plot it against the video.</div>
+          <div class="plot-grid" id="plotGrid"></div>
+        </section>
       </main>
     </div>
   </section>
@@ -238,6 +249,7 @@
   <div class="toasts" id="toasts"></div>
 
   <script src="/app.js"></script>
+  <script src="/plot.js"></script>
   <script src="/dataset.js"></script>
 </body>
 </html>

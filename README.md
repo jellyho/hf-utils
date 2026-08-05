@@ -15,7 +15,7 @@ through the website one repo at a time.
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub, as background jobs with live logs + cancel. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
-| **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport. |
+| **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
 - Shows downloads, likes, last-modified for every repo.
 - Bulk delete requires typing `DELETE` in a confirmation dialog (deletes are permanent).
@@ -47,6 +47,12 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   cameras, 0 dropped frames**, and it stays that fast for hour-long files because LeRobot
   writes a keyframe every ~2 frames.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
+- **Plots**: pick up to three features (e.g. `action.joint_pos` + `observation.state.joint_pos`)
+  and get one small chart **per dimension**, with the commanded and measured traces overlaid.
+  Dimension identity comes from position, not colour — 14 categorical hues would not be
+  distinguishable — so colour is free to carry the comparison that matters. The plots share
+  the video's time cursor: scrubbing moves it, and clicking or dragging a plot seeks the
+  video. Each chart shows its value at the cursor, so numbers never live only in a tooltip.
 - Everything is derived from `meta/info.json` — cameras are the features with
   `dtype: "video"`, paths come from the `data_path`/`video_path` templates — so it works on
   any v3.0 dataset, not just one robot. v2.x datasets are rejected with a conversion hint.
@@ -105,6 +111,7 @@ hf-util/
 │   ├── index.html          # single-page GUI
 │   ├── app.js              # repos / collections / transfer / folder picker
 │   ├── dataset.js          # the LeRobot viewer
+│   ├── plot.js             # small-multiple timeseries charts (inline SVG)
 │   └── styles.css
 ├── pyproject.toml          # `pip install -e .` — lets other projects import hfutil
 ├── requirements.txt

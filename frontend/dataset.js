@@ -71,6 +71,7 @@ async function dsOpen(path) {
 
     $("#dsCams").replaceChildren();
     renderEpisodeList();
+    renderPlotPicker();
     if (DS.eps.length) selectEpisode(DS.eps[0].ep);
   } catch (e) {
     $("#dsInfo").textContent = "";
@@ -229,6 +230,7 @@ async function selectEpisode(index) {
     el("span", { className: "ds-tasktext" }, ep.tasks[0] || "(no task)"),
   );
   seekToFrame(0, true);
+  onEpisodeChangedForPlots();
 }
 
 function seekToFrame(f, force = false) {
@@ -252,6 +254,7 @@ function updateTransport() {
   $("#dsFrame").textContent =
     `${DS.frame} / ${DS.ep.length - 1}  ·  ${t.toFixed(2)}s`;
   $("#dsPlay").textContent = DS.playing ? "❚❚" : "▶";
+  if (typeof updatePlotCursor === "function") updatePlotCursor();
 }
 
 /* ----------------------------------------------------------------------- *
