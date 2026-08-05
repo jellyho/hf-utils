@@ -14,7 +14,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from hfutil.dataset import edit as dsedit
+from hfutil.dataset import health as dshealth
 from hfutil.dataset import meta as dsmeta
+from hfutil.dataset import profiles as dsprofiles
 from hfutil.dataset import video as dsvideo
 
 from .jobs import JOBS
@@ -237,6 +239,138 @@ def edit_delete_episodes(body: DeleteEpisodesBody) -> dict:
         episodes=wanted,
     )
     return job.public()
+
+
+class SplitBody(BaseModel):
+    root: str
+    splits: dict[str, float | list[int]]
+    out_dir: Optional[str] = None
+
+
+@router.post("/edit/split")
+def edit_split(body: SplitBody) -> dict:
+    base = _root(body.root)
+    info = _info(base)
+    if len(body.splits) < 2:
+        raise HTTPException(status_code=400, detail="give at least two splits")
+
+    total = len(dsmeta.episodes(base, info))
+    fractions = [v for v in body.splits.values() if isinstance(v, (int, float))]
+    lists = [v for v in body.splits.values() if isinstance(v, list)]
+    if fractions and lists:
+        raise HTTPException(status_code=400, detail="use either fractions or episode lists, not both")
+    if fractions:
+        if abs(sum(fractions) - 1.0) > 1e-6:
+            raise HTTPException(status_code=400, detail=f"fractions must sum to 1 (got {sum(fractions):g})")
+    else:
+        seen: set[int] = set()
+        for eps in lists:
+            for e in eps:
+                if not 0 <= e < total:
+                    raise HTTPException(status_code=400, detail=f"episode {e} out of range 0..{total-1}")
+                if e in seen:
+                    raise HTTPException(status_code=400, detail=f"episode {e} appears in more than one split")
+                seen.add(e)
+
+    out_dir = Path(body.out_dir).expanduser() if body.out_dir else base.parent / f"{base.name}_split"
+    job = JOBS.start(
+        kind="ds_split",
+        label=f"{base.name} · split into {len(body.splits)}",
+        local_dir=str(out_dir),
+        ds_root=str(base),
+        out_dir=str(out_dir),
+        splits=body.splits,
+    )
+    return job.public()
+
+
+class MergeBody(BaseModel):
+    roots: list[str]
+    out_dir: str
+
+
+@router.post("/edit/merge")
+def edit_merge(body: MergeBody) -> dict:
+    if len(body.roots) < 2:
+        raise HTTPException(status_code=400, detail="merging needs at least two datasets")
+    bases = [_root(r) for r in body.roots]
+    for b in bases:
+        _info(b)
+    out_dir = Path(body.out_dir).expanduser()
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise HTTPException(status_code=400, detail=f"output folder is not empty: {out_dir}")
+    if any(out_dir == b or out_dir in b.parents for b in bases):
+        raise HTTPException(status_code=400, detail="output folder must be outside the sources")
+
+    job = JOBS.start(
+        kind="ds_merge",
+        label=f"merge {len(bases)} datasets → {out_dir.name}",
+        local_dir=str(out_dir),
+        roots=[str(b) for b in bases],
+        out_dir=str(out_dir),
+    )
+    return job.public()
+
+
+@router.get("/outcomes")
+def get_outcomes(root: str) -> dict:
+    """Per-episode success/fail/discard, when the dataset carries that sidecar."""
+    base = _root(root)
+    rows = dsprofiles.read_outcomes(base)
+    return {"outcomes": {str(k): v.get("outcome") for k, v in rows.items()},
+            "rows": {str(k): v for k, v in rows.items()},
+            "choices": list(dsprofiles.OUTCOMES)}
+
+
+class OutcomeBody(BaseModel):
+    root: str
+    episode: int
+    outcome: str
+
+
+@router.post("/outcomes")
+def set_outcome(body: OutcomeBody) -> dict:
+    base = _root(body.root)
+    try:
+        entry = dsprofiles.set_outcome(base, body.episode, body.outcome)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "entry": entry}
+
+
+@router.get("/control-mode")
+def get_control_mode(root: str, ep: int) -> dict:
+    """The per-frame control_mode series, for display. Writing it belongs to the
+    recorder that understands the robot."""
+    base = _root(root)
+    series = dsprofiles.read_control_mode(base, ep)
+    return {"ep": ep, "values": series, "modes": dsprofiles.CONTROL_MODES}
+
+
+@router.get("/check")
+def check_dataset(root: str, deep_video: bool = False) -> dict:
+    base = _root(root)
+    _info(base)
+    try:
+        return dshealth.check(base, deep_video=deep_video)
+    except dsmeta.DatasetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class RepairBody(BaseModel):
+    root: str
+
+
+@router.post("/repair/timestamps")
+def repair_timestamps(body: RepairBody) -> dict:
+    base = _root(body.root)
+    _info(base)
+    try:
+        fixed = dshealth.repair_timestamps(base)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    dsmeta._CACHE.clear()
+    return {"fixed": fixed}
 
 
 @router.get("/annotations")

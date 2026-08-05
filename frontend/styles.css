@@ -278,6 +278,13 @@ td.c-check { text-align: center; }
 .ep-idx { font-weight: 700; font-family: ui-monospace, monospace; }
 .ep-len, .ep-dur { color: var(--muted); font-family: ui-monospace, monospace; }
 .ep-task { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-row.has-outcome { grid-template-columns: 16px 46px 46px 62px 1fr; }
+.ep-outcome { font-weight: 700; text-align: center; }
+.ep-outcome.success { color: var(--ok); }
+.ep-outcome.fail { color: var(--danger); }
+.ep-outcome.discard { color: var(--muted); }
+
+.ds-outcome { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .ds-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 /* Panels are sized by HEIGHT, with width following each camera's aspect ratio.
@@ -333,11 +340,23 @@ td.c-check { text-align: center; }
 .annot-segs { position: absolute; inset: 0; }
 .annot-seg {
   position: absolute; top: 0; bottom: 0; display: flex; align-items: center;
-  padding: 0 6px; overflow: hidden; opacity: 0.85;
+  padding: 0 6px; overflow: hidden; opacity: 0.85; cursor: grab;
   font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap;
-  /* a 2px surface gap rather than a border, so touching segments stay separable */
+  /* a 2px surface gap rather than a border, so touching blocks stay separable */
   box-shadow: inset 2px 0 0 var(--panel), inset -2px 0 0 var(--panel);
 }
+.annot-seg:hover { opacity: 1; }
+.annot-seg.selected {
+  opacity: 1;
+  box-shadow: inset 2px 0 0 var(--panel), inset -2px 0 0 var(--panel),
+              inset 0 0 0 2px var(--text);
+}
+/* Widen the resize grab zone visually at the edges. */
+.annot-seg::before, .annot-seg::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 7px;
+}
+.annot-seg::before { left: 0; }
+.annot-seg::after { right: 0; }
 .annot-sel {
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: rgba(79, 140, 255, 0.28);
@@ -358,6 +377,20 @@ td.c-check { text-align: center; }
 .seg-chip.ghost { color: var(--muted); }
 .seg-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .known-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
+
+.merge-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.merge-row {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); padding: 5px 9px;
+}
+.merge-idx { font-weight: 700; color: var(--muted); }
+.merge-path {
+  flex: 1; min-width: 0; font-family: ui-monospace, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+}
+.hint.bad { color: var(--danger); }
+.check-ok { color: var(--ok); font-weight: 700; }
+.check-kind { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 
 /* ---- timeseries plots (small multiples) ----
    Categorical slots 1-3 of the validated palette; dark steps are chosen for the dark

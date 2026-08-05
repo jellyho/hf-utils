@@ -60,12 +60,34 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   re-indexing. Deletes go through lerobot's own `dataset_tools`, are verified on disk
   before anything is swapped, keep the original as a `.backup-…` folder beside the
   dataset, and refuse to start if there isn't room for the temporary copy.
+- **Split / merge** into new datasets (the sources are only read). Splits take either
+  fractions (`train = 0.8`) or explicit episode lists (`val = 0,3,5-9`); merges check that
+  fps and the feature set match before writing anything.
+- **Check** — episode numbering, `total_episodes` vs reality, `from/to_index` vs `length`,
+  each camera's window vs `length/fps`, missing files, columns that differ between data
+  files, and optionally the real frame count of every mp4. Timestamp drift (a dropped
+  trailing frame is the usual cause, and it's what makes lerobot's `delete_episodes`
+  assert) can be repaired in place, with a backup.
 - **Subtask annotation**: set your label palette up once, then it's drag-and-click —
-  drag a span on the strip under the video, click a label (or press its number key).
-  Overlapping assignments carve the neighbours rather than stacking, so segments never
-  overlap. Segments live in `meta/lerobot_annotations.json` while you work; **Export**
-  writes a `subtask_index` column plus `meta/subtasks.parquet`, which **lerobot 0.4.4
-  reads natively** — `dataset[i]["subtask"]` returns your label string.
+  drag on the strip under the video, click a label (or press its number key). What you get
+  is a **block**: click to select it, drag its body to move it, drag an edge to resize.
+  Blocks butt up against their neighbours and can never overlap, and erase removes the
+  whole selected block. Segments live in `meta/lerobot_annotations.json` while you work;
+  **Export** writes a `subtask_index` column plus `meta/subtasks.parquet`, which
+  **lerobot 0.4.4 reads natively** — `dataset[i]["subtask"]` returns your label string.
+
+### Dataset profiles
+
+Some recorders write things the LeRobot format itself knows nothing about. Rather than
+assume one lab's layout, `hfutil/dataset/profiles.py` **detects** them and the UI only
+offers what a given dataset actually has:
+
+| Detected by | Enables |
+|---|---|
+| an `outcomes.jsonl` sidecar | per-episode **success / fail / discard** buttons, and a status column in the episode list |
+| an `observation.control_mode` feature | reading the per-frame mode (teleop / policy / intervention / replay / homing) for display — *writing* it stays with the recorder that understands the robot |
+
+Both are carried across and renumbered when episodes are deleted.
 - **Plots**: pick up to three features (e.g. `action.joint_pos` + `observation.state.joint_pos`)
   and get one small chart **per dimension**, with the commanded and measured traces overlaid.
   Dimension identity comes from position, not colour — 14 categorical hues would not be
@@ -122,7 +144,9 @@ hf-util/
 │       ├── meta.py         # LeRobot v3.0 metadata reader (pyarrow only)
 │       ├── video.py        # video path resolution, ffmpeg/font discovery, codec probe
 │       ├── render.py       # builds the ffmpeg command for an episode -> MP4 / GIF
-│       └── edit.py         # task strings, subtask annotations + export (pyarrow, atomic)
+│       ├── edit.py         # task strings, subtask annotations + export (pyarrow, atomic)
+│       ├── health.py       # integrity checks + timestamp repair
+│       └── profiles.py     # optional per-recorder capabilities, detected not assumed
 ├── backend/                # the local web app
 │   ├── main.py             # FastAPI app: repos / collections / transfer / jobs
 │   ├── routes_dataset.py   # /api/ds/* — the LeRobot viewer endpoints
@@ -205,7 +229,18 @@ POST /api/ds/edit/delete-episodes {root, episodes[]}
 GET  /api/ds/annotations?root=
 POST /api/ds/annotations         {root, doc}
 POST /api/ds/edit/export-subtasks {root}
+POST /api/ds/edit/split          {root, splits, out_dir}
+POST /api/ds/edit/merge          {roots[], out_dir}
+
+GET  /api/ds/check?root=&deep_video=
+POST /api/ds/repair/timestamps   {root}
+GET  /api/ds/outcomes?root=          # only meaningful for datasets that have the sidecar
+POST /api/ds/outcomes            {root, episode, outcome}
+GET  /api/ds/control-mode?root=&ep=  # read-only
 ```
+
+Migrating away from another repo's copy of this tooling? See
+[docs/i2rt_rllab-migration.md](docs/i2rt_rllab-migration.md).
 
 ## Safety
 

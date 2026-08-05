@@ -269,6 +269,8 @@ def describe(root: Path) -> dict:
         )
 
     total_frames = sum(e["length"] for e in eps)
+    from .profiles import detect as detect_profile
+
     return {
         "root": str(root),
         "name": root.name,
@@ -282,6 +284,9 @@ def describe(root: Path) -> dict:
         "tasks": tasks_by_index(root),
         "has_subtasks": (root / "meta" / "subtasks.parquet").is_file(),
         "has_annotations": (root / "meta" / "lerobot_annotations.json").is_file(),
+        # Optional capabilities this particular dataset happens to support; the UI only
+        # offers what is actually here (see hfutil.dataset.profiles).
+        "profile": detect_profile(root, info),
         "warnings": warnings,
     }
 

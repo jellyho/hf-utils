@@ -221,7 +221,19 @@
           <div class="ds-meta" id="dsEpMeta"></div>
           <button class="btn" type="button" id="dsEditTaskBtn" title="Change this episode's task text">✎ Task…</button>
           <button class="btn" type="button" id="dsRenderBtn" title="Render episodes to MP4 / GIF">⎙ Render…</button>
+          <button class="btn" type="button" id="dsCheckBtn" title="Check the dataset for problems">🩺 Check</button>
+          <button class="btn" type="button" id="dsSplitBtn" title="Split into new datasets">⑂ Split…</button>
+          <button class="btn" type="button" id="dsMergeBtn" title="Merge with other datasets">⑃ Merge…</button>
           <button class="btn danger" type="button" id="dsDeleteBtn" title="Delete episodes">🗑 Delete…</button>
+        </div>
+
+        <!-- Only shown when the dataset carries an outcomes.jsonl sidecar -->
+        <div class="ds-outcome" id="dsOutcomeRow" hidden>
+          <span class="hint">Outcome</span>
+          <button class="btn tiny" type="button" data-outcome="success">✓ success</button>
+          <button class="btn tiny" type="button" data-outcome="fail">✗ fail</button>
+          <button class="btn tiny" type="button" data-outcome="discard">· discard</button>
+          <span class="mono" id="dsOutcomeNow">—</span>
         </div>
 
         <!-- Subtask annotation: drag a span on the strip, then click a label -->
@@ -271,6 +283,66 @@
       <div class="modal-actions">
         <button class="btn ghost" type="button" id="tkCancel">Cancel</button>
         <button class="btn primary" type="button" id="tkSave">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dataset health check -->
+  <div class="modal-backdrop" id="checkModal" hidden>
+    <div class="modal render-modal">
+      <h3>Dataset check</h3>
+      <p class="modal-sub" id="ckSub">…</p>
+      <div id="ckBody"></div>
+      <label class="checkline"><input type="checkbox" id="ckDeep" /><span>Also open every video and count frames (slow)</span></label>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="ckRepair" hidden>Repair timestamps</button>
+        <button class="btn ghost" type="button" id="ckRerun">Re-run</button>
+        <button class="btn primary" type="button" id="ckClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Split into new datasets -->
+  <div class="modal-backdrop" id="splitModal" hidden>
+    <div class="modal">
+      <h3>Split dataset</h3>
+      <p class="modal-sub" id="splitSub"></p>
+      <label class="field"><span>Splits — one per line, <code>name = fraction</code> or <code>name = 0,3,5-9</code></span>
+        <textarea class="search" id="spText" rows="4" spellcheck="false"></textarea></label>
+      <p class="hint" id="spPreview"></p>
+      <label class="field"><span>Output folder (one subfolder per split)</span>
+        <div class="path-row">
+          <input class="search" id="spOutDir" placeholder="(defaults to &lt;dataset&gt;_split beside the dataset)" autocomplete="off" />
+          <button class="btn" type="button" id="spBrowse">Browse…</button>
+        </div></label>
+      <p class="hint">New datasets are written; the source is only read.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="spCancel">Cancel</button>
+        <button class="btn primary" type="button" id="spStart">Split</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge datasets -->
+  <div class="modal-backdrop" id="mergeModal" hidden>
+    <div class="modal">
+      <h3>Merge datasets</h3>
+      <p class="modal-sub">The open dataset comes first; add the others in the order you want them concatenated.</p>
+      <div class="merge-list" id="mgList"></div>
+      <div class="path-row">
+        <input class="search" id="mgAddPath" placeholder="path to another LeRobot dataset" autocomplete="off" />
+        <button class="btn" type="button" id="mgBrowse">Browse…</button>
+        <button class="btn" type="button" id="mgAdd">Add</button>
+      </div>
+      <label class="field" style="margin-top:12px"><span>Output folder (must be empty)</span>
+        <div class="path-row">
+          <input class="search" id="mgOutDir" placeholder="path for the merged dataset" autocomplete="off" />
+          <button class="btn" type="button" id="mgOutBrowse">Browse…</button>
+        </div></label>
+      <p class="hint">fps and the feature set must match across all inputs; this is checked before anything is written.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="mgCancel">Cancel</button>
+        <button class="btn primary" type="button" id="mgStart">Merge</button>
       </div>
     </div>
   </div>

@@ -220,12 +220,89 @@ def do_ds_delete_episodes(spec: dict) -> None:
             log(f"[warn] could not carry annotations over: {exc} "
                 f"(they remain in the backup)")
 
+    # Same for the recorder's outcomes sidecar, when the dataset has one.
+    from hfutil.dataset import profiles as _profiles
+    src_out = _profiles.outcomes_path(root)
+    if src_out.is_file():
+        try:
+            remapped = _profiles.remap_outcomes(_profiles.read_outcomes(root), indices)
+            _profiles.write_outcomes(tmp_dir, remapped)
+            log(f"[delete] carried outcomes.jsonl across ({len(remapped)} episodes)")
+        except Exception as exc:
+            log(f"[warn] could not carry outcomes.jsonl over: {exc} (it remains in the backup)")
+
     backup = root.parent / f"{root.name}.backup-delete-{len(indices)}ep.{stamp}"
     os.replace(root, backup)
     os.replace(tmp_dir, root)
     log(f"[delete] done — {total} episodes remain")
     log(f"[delete] original moved to {backup}")
     artifact(backup)
+
+
+def do_ds_split(spec: dict) -> None:
+    """Split into new datasets. Non-destructive: the source is only read."""
+    from hfutil.dataset import meta as dsmeta
+
+    root = dsmeta.resolve_root(spec["ds_root"])
+    out_dir = Path(spec["out_dir"])
+    splits = spec["splits"]          # {"train": 0.8, "val": 0.2} or {"train": [0,1,2], …}
+    log(f"[split] {root.name} -> {out_dir}  ({', '.join(splits)})")
+    log("[split] loading dataset (this imports lerobot/torch)…")
+
+    from lerobot.datasets.dataset_tools import split_dataset as _split
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    repo_id = spec.get("repo_id") or f"local/{root.name}"
+    ds = LeRobotDataset(repo_id, root=str(root))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = _split(ds, splits=splits, output_dir=str(out_dir))
+    del ds
+
+    for name in result:
+        path = out_dir / name
+        if path.is_dir():
+            n = dsmeta.read_info(path).get("total_episodes", "?")
+            log(f"[split] {name}: {n} episodes -> {path}")
+            artifact(path)
+    log(f"[split] done — source dataset untouched")
+
+
+def do_ds_merge(spec: dict) -> None:
+    """Merge several datasets into a new one. Non-destructive."""
+    from hfutil.dataset import meta as dsmeta
+
+    roots = [dsmeta.resolve_root(p) for p in spec["roots"]]
+    out_dir = Path(spec["out_dir"])
+    if len(roots) < 2:
+        raise RuntimeError("merging needs at least two datasets")
+
+    # Fail early on a mismatch rather than halfway through the copy.
+    infos = [dsmeta.read_info(r) for r in roots]
+    fps = {int(i.get("fps") or 0) for i in infos}
+    if len(fps) > 1:
+        raise RuntimeError(f"datasets disagree on fps: {sorted(fps)}")
+    feats = [tuple(sorted((i.get("features") or {}).keys())) for i in infos]
+    if len(set(feats)) > 1:
+        only = set(feats[0]).symmetric_difference(*[set(f) for f in feats[1:]])
+        raise RuntimeError(f"datasets have different features; differing keys: {sorted(only)}")
+
+    log(f"[merge] {len(roots)} datasets -> {out_dir}")
+    for r, i in zip(roots, infos):
+        log(f"[merge]   {r.name}: {i.get('total_episodes')} episodes")
+    log("[merge] loading datasets (this imports lerobot/torch)…")
+
+    from lerobot.datasets.dataset_tools import merge_datasets as _merge
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    dss = [LeRobotDataset(f"local/{r.name}", root=str(r)) for r in roots]
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    _merge(dss, output_repo_id=spec.get("repo_id") or f"local/{out_dir.name}",
+           output_dir=str(out_dir))
+    del dss
+
+    total = dsmeta.read_info(out_dir).get("total_episodes", "?")
+    log(f"[merge] done — {total} episodes at {out_dir}")
+    artifact(out_dir)
 
 
 def main() -> int:
@@ -246,6 +323,10 @@ def main() -> int:
             do_ds_export_subtasks(spec)
         elif spec["kind"] == "ds_delete_episodes":
             do_ds_delete_episodes(spec)
+        elif spec["kind"] == "ds_split":
+            do_ds_split(spec)
+        elif spec["kind"] == "ds_merge":
+            do_ds_merge(spec)
         else:
             log(f"worker: unknown kind {spec['kind']!r}")
             return 2

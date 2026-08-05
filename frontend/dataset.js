@@ -24,6 +24,7 @@ const DS = {
   rafId: null,
   speed: 1,
   seekPending: false,
+  outcomes: {},        // episode -> success|fail|discard, only for datasets that have them
 };
 
 const MAX_EPISODE_ROWS = 1000;
@@ -69,6 +70,14 @@ async function dsOpen(path) {
     (info.warnings || []).forEach((w) => toast(w, "err", 9000));
     if (!info.cameras.length) toast("This dataset has no video features to play.", "err", 8000);
 
+    DS.outcomes = {};
+    if (info.profile?.outcomes) {
+      try {
+        DS.outcomes = (await api(`/api/ds/outcomes?root=${encodeURIComponent(info.root)}`)).outcomes;
+      } catch { /* sidecar unreadable; carry on without it */ }
+    }
+    $("#dsOutcomeRow").hidden = !info.profile?.outcomes;
+
     $("#dsCams").replaceChildren();
     renderEpisodeList();
     renderPlotPicker();
@@ -107,6 +116,13 @@ function renderEpisodeList() {
       el("span", { className: "ep-dur" }, fmtDur(e.length / DS.fps)),
       el("span", { className: "ep-task", title: e.tasks[0] || "" }, e.tasks[0] || "—"),
     );
+    // Only datasets that actually carry an outcomes sidecar get this column.
+    const outcome = DS.outcomes[String(e.ep)];
+    if (outcome) {
+      row.classList.add("has-outcome");
+      row.prepend(el("span", { className: `ep-outcome ${outcome}`, title: outcome },
+        { success: "✓", fail: "✗", discard: "·" }[outcome] || "?"));
+    }
     row.addEventListener("click", () => selectEpisode(e.ep));
     list.append(row);
   }
@@ -232,6 +248,7 @@ async function selectEpisode(index) {
   );
   seekToFrame(0, true);
   onEpisodeChangedForPlots();
+  renderOutcome();
   if (typeof annRender === "function") { ANN.sel = null; annRender(); }
 }
 
@@ -358,6 +375,24 @@ function dsWire() {
   $("#tkCancel").addEventListener("click", () => ($("#taskModal").hidden = true));
   $("#tkSave").addEventListener("click", saveTask);
   $("#dsDeleteBtn").addEventListener("click", deleteEpisodesDialog);
+  document.querySelectorAll("#dsOutcomeRow .btn").forEach((b) =>
+    b.addEventListener("click", () => setOutcome(b.dataset.outcome)));
+  $("#dsCheckBtn").addEventListener("click", runCheck);
+  $("#ckClose").addEventListener("click", () => ($("#checkModal").hidden = true));
+  $("#ckRerun").addEventListener("click", runCheck);
+  $("#ckRepair").addEventListener("click", repairTimestamps);
+  $("#dsSplitBtn").addEventListener("click", openSplitDialog);
+  $("#spCancel").addEventListener("click", () => ($("#splitModal").hidden = true));
+  $("#spText").addEventListener("input", splitPreview);
+  $("#spBrowse").addEventListener("click", () => openFolderPicker("spOutDir", "Choose an output folder"));
+  $("#spStart").addEventListener("click", startSplit);
+  $("#dsMergeBtn").addEventListener("click", openMergeDialog);
+  $("#mgCancel").addEventListener("click", () => ($("#mergeModal").hidden = true));
+  $("#mgBrowse").addEventListener("click", () => openFolderPicker("mgAddPath", "Choose a dataset to merge in"));
+  $("#mgOutBrowse").addEventListener("click", () => openFolderPicker("mgOutDir", "Choose the output folder"));
+  $("#mgAdd").addEventListener("click", addMergeSource);
+  $("#mgAddPath").addEventListener("keydown", (e) => { if (e.key === "Enter") addMergeSource(); });
+  $("#mgStart").addEventListener("click", startMerge);
 
   // render dialog
   $("#dsRenderBtn").addEventListener("click", openRenderDialog);
@@ -643,6 +678,206 @@ async function deleteEpisodesDialog() {
   } catch (e) {
     toast(`Delete failed to start: ${e.message}`, "err", 12000);
   }
+}
+
+/* ---- outcomes (only for datasets that carry the sidecar) ---------------- */
+async function setOutcome(outcome) {
+  if (!DS.ep) return;
+  try {
+    await api("/api/ds/outcomes", {
+      method: "POST", body: { root: DS.root, episode: DS.ep.ep, outcome },
+    });
+    DS.outcomes[String(DS.ep.ep)] = outcome;
+    renderOutcome();
+    renderEpisodeList();
+    toast(`Episode ${DS.ep.ep}: ${outcome}`, "ok", 2000);
+  } catch (e) { toast(`Could not set outcome: ${e.message}`, "err", 8000); }
+}
+
+function renderOutcome() {
+  const now = DS.ep ? DS.outcomes[String(DS.ep.ep)] : null;
+  $("#dsOutcomeNow").textContent = now ? now : "not set";
+  document.querySelectorAll("#dsOutcomeRow .btn").forEach((b) => {
+    b.classList.toggle("primary", b.dataset.outcome === now);
+  });
+}
+
+/* ---- health check ------------------------------------------------------ */
+async function runCheck() {
+  if (!DS.root) return toast("Open a dataset first", "err");
+  const deep = $("#ckDeep").checked;
+  $("#checkModal").hidden = false;
+  $("#ckSub").textContent = deep ? "checking (reading every video)…" : "checking…";
+  $("#ckBody").replaceChildren();
+  $("#ckRepair").hidden = true;
+  try {
+    const res = await api(
+      `/api/ds/check?root=${encodeURIComponent(DS.root)}&deep_video=${deep}`);
+    $("#ckSub").textContent =
+      `${res.episodes} episodes · ${res.total_frames.toLocaleString()} frames · ${res.fps} fps · ` +
+      `${res.cameras.length} camera(s)` + (res.videos_checked ? ` · ${res.videos_checked} video file(s) read` : "");
+
+    const body = $("#ckBody");
+    if (res.ok) {
+      body.append(el("p", { className: "check-ok" }, "✓ No problems found."));
+      return;
+    }
+    const byKind = {};
+    for (const p of res.problems) (byKind[p.kind] ||= []).push(p);
+    for (const [kind, list] of Object.entries(byKind)) {
+      body.append(el("h4", { className: "check-kind" }, `${kind} — ${list.length}`));
+      const ul = el("ul", { className: "confirm-list" });
+      for (const p of list.slice(0, 40)) ul.append(el("li", {}, p.message));
+      if (list.length > 40) ul.append(el("li", {}, `… and ${list.length - 40} more`));
+      body.append(ul);
+    }
+    // Timestamp drift is the one thing we can fix safely, and it is what makes
+    // lerobot's delete_episodes assert.
+    $("#ckRepair").hidden = !byKind.timestamp;
+  } catch (e) {
+    $("#ckSub").textContent = "";
+    $("#ckBody").replaceChildren(el("p", { className: "warn" }, `Check failed: ${e.message}`));
+  }
+}
+
+async function repairTimestamps() {
+  try {
+    const res = await api("/api/ds/repair/timestamps", { method: "POST", body: { root: DS.root } });
+    toast(`Repaired ${res.fixed} timestamp(s) — originals in .hfutil_bak/`, "ok", 6000);
+    await dsOpen(DS.root);
+    runCheck();
+  } catch (e) { toast(`Repair failed: ${e.message}`, "err", 10000); }
+}
+
+/* ---- split ------------------------------------------------------------ */
+/** "train = 0.8" or "train = 0,3,5-9" per line. */
+function parseSplitSpec(text, total) {
+  const splits = {};
+  let mode = null;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^([^=]+)=(.+)$/);
+    if (!m) throw new Error(`cannot parse "${line}" — use  name = 0.8  or  name = 0,3,5-9`);
+    const name = m[1].trim(), value = m[2].trim();
+    if (!name) throw new Error("split name cannot be empty");
+    if (/^[0-9]*\.?[0-9]+$/.test(value) && Number(value) <= 1) {
+      if (mode === "list") throw new Error("use either fractions or episode lists, not both");
+      mode = "fraction";
+      splits[name] = Number(value);
+    } else {
+      if (mode === "fraction") throw new Error("use either fractions or episode lists, not both");
+      mode = "list";
+      const eps = parseEpisodeSpec(value);
+      if (!eps.length) throw new Error(`"${value}" matched no episodes`);
+      splits[name] = eps;
+    }
+  }
+  if (Object.keys(splits).length < 2) throw new Error("give at least two splits");
+  if (mode === "fraction") {
+    const sum = Object.values(splits).reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - 1) > 1e-6) throw new Error(`fractions must sum to 1 (they sum to ${sum.toFixed(3)})`);
+  }
+  return { splits, mode };
+}
+
+function splitPreview() {
+  const box = $("#spPreview");
+  if (!DS.eps.length) return;
+  try {
+    const { splits, mode } = parseSplitSpec($("#spText").value, DS.eps.length);
+    const parts = Object.entries(splits).map(([name, v]) =>
+      mode === "fraction"
+        ? `${name}: ~${Math.round(v * DS.eps.length)} ep`
+        : `${name}: ${v.length} ep`);
+    box.textContent = parts.join("   ·   ");
+    box.classList.remove("bad");
+  } catch (e) {
+    box.textContent = e.message;
+    box.classList.add("bad");
+  }
+}
+
+function openSplitDialog() {
+  if (!DS.root) return toast("Open a dataset first", "err");
+  $("#splitSub").textContent = `${DS.info.name} · ${DS.eps.length} episodes`;
+  $("#spText").value = "train = 0.8\nval = 0.2";
+  $("#spOutDir").value = "";
+  splitPreview();
+  $("#splitModal").hidden = false;
+}
+
+async function startSplit() {
+  let splits;
+  try { ({ splits } = parseSplitSpec($("#spText").value, DS.eps.length)); }
+  catch (e) { return toast(e.message, "err", 8000); }
+  try {
+    await api("/api/ds/edit/split", {
+      method: "POST",
+      body: { root: DS.root, splits, out_dir: $("#spOutDir").value.trim() || null },
+    });
+    $("#splitModal").hidden = true;
+    toast("Splitting — see the Jobs tab", "info", 6000);
+    loadJobs();
+  } catch (e) { toast(`Split failed to start: ${e.message}`, "err", 10000); }
+}
+
+/* ---- merge ------------------------------------------------------------ */
+const MERGE = { roots: [] };
+
+function renderMergeList() {
+  const box = $("#mgList");
+  box.replaceChildren();
+  MERGE.roots.forEach((path, i) => {
+    const row = el("div", { className: "merge-row" },
+      el("span", { className: "merge-idx" }, `${i + 1}`),
+      el("span", { className: "merge-path", title: path }, path));
+    if (i > 0) {
+      const rm = el("button", { className: "btn tiny ghost", type: "button", title: "Remove" }, "✕");
+      rm.addEventListener("click", () => { MERGE.roots.splice(i, 1); renderMergeList(); });
+      row.append(rm);
+    } else {
+      row.append(el("span", { className: "hint" }, "open dataset"));
+    }
+    box.append(row);
+  });
+}
+
+function openMergeDialog() {
+  if (!DS.root) return toast("Open a dataset first", "err");
+  MERGE.roots = [DS.root];
+  $("#mgAddPath").value = "";
+  $("#mgOutDir").value = "";
+  renderMergeList();
+  $("#mergeModal").hidden = false;
+}
+
+async function addMergeSource() {
+  const path = $("#mgAddPath").value.trim();
+  if (!path) return;
+  if (MERGE.roots.includes(path)) return toast("Already in the list", "info");
+  try {
+    const info = await api(`/api/ds/open?root=${encodeURIComponent(path)}`);
+    if (info.fps !== DS.info.fps) {
+      return toast(`fps mismatch: ${info.name} is ${info.fps}, this one is ${DS.info.fps}`, "err", 9000);
+    }
+    MERGE.roots.push(info.root);
+    $("#mgAddPath").value = "";
+    renderMergeList();
+    toast(`Added ${info.name} (${info.total_episodes} episodes)`, "ok");
+  } catch (e) { toast(`Not a usable dataset: ${e.message}`, "err", 9000); }
+}
+
+async function startMerge() {
+  if (MERGE.roots.length < 2) return toast("Add at least one more dataset", "err");
+  const out = $("#mgOutDir").value.trim();
+  if (!out) return toast("Choose an output folder", "err");
+  try {
+    await api("/api/ds/edit/merge", { method: "POST", body: { roots: MERGE.roots, out_dir: out } });
+    $("#mergeModal").hidden = true;
+    toast("Merging — see the Jobs tab", "info", 6000);
+    loadJobs();
+  } catch (e) { toast(`Merge failed to start: ${e.message}`, "err", 10000); }
 }
 
 /** After a mutating job finishes, the on-disk state (and episode numbering) has moved —
