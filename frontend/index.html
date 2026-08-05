@@ -8,6 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤗</text></svg>" />
 </head>
 <body>
+  <div class="appbar">
   <header class="topbar">
     <div class="brand">
       <span class="logo">🤗</span>
@@ -24,6 +25,7 @@
     <button class="tab" data-tab="transfer">Transfer</button>
     <button class="tab" data-tab="lerobot">LeRobot</button>
   </nav>
+  </div>
 
   <!-- Repo view (models & datasets share this) -->
   <section class="view" id="repoView">
@@ -207,7 +209,12 @@
           </label>
         </div>
 
-        <div class="ds-meta" id="dsEpMeta"></div>
+        <div class="ds-metarow">
+          <!-- #dsEpMeta is replaced wholesale on episode change, so the button lives
+               outside it or it would be wiped on the first selection. -->
+          <div class="ds-meta" id="dsEpMeta"></div>
+          <button class="btn" type="button" id="dsRenderBtn" title="Render episodes to MP4 / GIF">⎙ Render…</button>
+        </div>
 
         <section class="ds-plots">
           <div class="plot-head">
@@ -222,6 +229,71 @@
       </main>
     </div>
   </section>
+
+  <!-- Render options -->
+  <div class="modal-backdrop" id="renderModal" hidden>
+    <div class="modal render-modal">
+      <h3>Render episodes</h3>
+      <p class="modal-sub" id="renderSub"></p>
+
+      <div class="form-row">
+        <label class="field"><span>Episodes</span>
+          <input class="search" id="rdEpisodes" placeholder="7  or  0,3,5  or  0-9" autocomplete="off" /></label>
+        <label class="field"><span>Format</span>
+          <select class="select" id="rdFormat">
+            <option value="mp4">MP4 (H.264)</option>
+            <option value="gif">GIF</option>
+          </select></label>
+      </div>
+
+      <label class="field"><span>Cameras (none checked = all)</span>
+        <div class="cam-checks" id="rdCameras"></div></label>
+
+      <div class="form-row">
+        <label class="field"><span>Speed</span>
+          <select class="select" id="rdSpeed">
+            <option value="0.5">0.5×</option><option value="1">1×</option>
+            <option value="2">2×</option><option value="4" selected>4×</option>
+            <option value="8">8×</option><option value="16">16×</option>
+          </select></label>
+        <label class="field"><span>Panel height (px)</span>
+          <input class="search" id="rdHeight" type="number" min="80" max="1080" step="20" value="320" /></label>
+      </div>
+
+      <div class="form-row" id="rdGifRow" hidden>
+        <label class="field"><span>GIF fps</span>
+          <input class="search" id="rdGifFps" type="number" min="2" max="30" value="12" /></label>
+        <label class="field"><span>GIF width (px)</span>
+          <input class="search" id="rdGifWidth" type="number" min="120" max="1920" step="20" value="640" /></label>
+      </div>
+
+      <div class="form-row">
+        <label class="field"><span>First frame</span>
+          <input class="search" id="rdFrom" type="number" min="0" value="0" /></label>
+        <label class="field"><span>Last frame (blank = end)</span>
+          <input class="search" id="rdTo" type="number" min="0" placeholder="end" /></label>
+      </div>
+      <button class="btn tiny ghost" type="button" id="rdUseView">Use the current view as the range</button>
+
+      <div class="checkgrid">
+        <label class="checkline"><input type="checkbox" id="rdLabels" checked /><span>Camera labels</span></label>
+        <label class="checkline"><input type="checkbox" id="rdCounter" checked /><span>Episode · time · frame counter</span></label>
+        <label class="checkline"><input type="checkbox" id="rdTask" /><span>Task text</span></label>
+        <label class="checkline"><input type="checkbox" id="rdMeta" checked /><span>Write file metadata</span></label>
+      </div>
+
+      <label class="field"><span>Output folder</span>
+        <div class="path-row">
+          <input class="search" id="rdOutDir" placeholder="(defaults to <dataset>_renders next to the dataset)" autocomplete="off" />
+          <button class="btn" type="button" id="rdBrowse">Browse…</button>
+        </div></label>
+
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="rdCancel">Cancel</button>
+        <button class="btn primary" type="button" id="rdStart">Render</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Folder picker -->
   <div class="modal-backdrop" id="fsModal" hidden>

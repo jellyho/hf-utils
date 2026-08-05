@@ -465,6 +465,7 @@ async function switchTab(tab) {
   $("#transferView").hidden = tab !== "transfer";
   $("#lerobotView").hidden = tab !== "lerobot";
   stopJobsPolling();
+  measureChrome();   // each view has its own toolbar, so the offset changes with the tab
   if (typeof dsOnTab === "function") dsOnTab(tab === "lerobot");
   if (tab === "collection") {
     await loadCollections();
@@ -518,12 +519,14 @@ function renderJobs(jobs) {
 function renderJobCard(j) {
   const card = el("div", { className: "job" });
   const head = el("div", { className: "job-head" });
-  const arrow = j.kind === "download" ? "⤓" : "⤒";
+  const arrow = { download: "⤓", upload: "⤒", ds_render: "⎙" }[j.kind] || "•";
+  const meta = j.kind === "ds_render"
+    ? `render · ${fmtElapsed(j)}`
+    : `${j.mode}${j.mode === "lerobot" ? " 🤖" : ""} · ${j.repo_type} · ${fmtElapsed(j)}`;
   head.append(
     el("span", { className: `badge ${j.status}` }, j.status),
-    el("span", { className: "job-title" }, `${arrow} ${j.repo_id}`),
-    el("span", { className: "job-meta" },
-      `${j.mode}${j.mode === "lerobot" ? " 🤖" : ""} · ${j.repo_type} · ${fmtElapsed(j)}`),
+    el("span", { className: "job-title" }, `${arrow} ${j.label || j.repo_id}`),
+    el("span", { className: "job-meta" }, meta),
   );
   if (j.status === "running") {
     const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
@@ -765,8 +768,33 @@ function wire() {
   });
 }
 
+/* The sticky offsets can't be hardcoded: the toolbar wraps to two rows on a narrow
+ * window, and the app bar's height depends on the font. Measure both and publish them
+ * as CSS variables so the toolbar sticks under the tabs and the table header under the
+ * toolbar, at any size. */
+function measureChrome() {
+  const appbar = $(".appbar");
+  if (!appbar) return;
+  const appH = appbar.getBoundingClientRect().height;
+  const toolbar = [...document.querySelectorAll(".view:not([hidden]) .toolbar")][0];
+  const toolH = toolbar ? toolbar.getBoundingClientRect().height : 0;
+  const root = document.documentElement.style;
+  root.setProperty("--appbar-h", `${Math.round(appH)}px`);
+  root.setProperty("--chrome-h", `${Math.round(appH + toolH)}px`);
+}
+
+function watchChrome() {
+  measureChrome();
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(measureChrome);
+    document.querySelectorAll(".appbar, .toolbar").forEach((n) => ro.observe(n));
+  }
+  window.addEventListener("resize", measureChrome);
+}
+
 async function init() {
   wire();
+  watchChrome();
   try {
     const me = await api("/api/whoami");
     $("#who").textContent = `${me.fullname || me.name} · @${me.name}`;

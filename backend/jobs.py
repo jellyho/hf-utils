@@ -27,12 +27,14 @@ MAX_LOG_LINES = 500
 @dataclass
 class Job:
     id: str
-    kind: str          # "download" | "upload"
-    mode: str          # "generic" | "lerobot"
-    repo_id: str
-    repo_type: str     # "model" | "dataset"
-    local_dir: str
+    kind: str          # "download" | "upload" | "ds_render" | …
+    mode: str = ""     # "generic" | "lerobot"
+    repo_id: str = ""
+    repo_type: str = ""     # "model" | "dataset"
+    local_dir: str = ""
     private: bool = False
+    label: str = ""    # what the UI shows; falls back to repo_id
+    spec: dict = field(default_factory=dict)   # extra, kind-specific fields
     status: str = "running"   # running | success | error | cancelled
     started_at: float = field(default_factory=time.time)
     ended_at: Optional[float] = None
@@ -59,6 +61,7 @@ class Job:
             "repo_type": self.repo_type,
             "local_dir": self.local_dir,
             "private": self.private,
+            "label": self.label or self.repo_id,
             "status": self.status,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
@@ -73,12 +76,12 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
-    def start(self, *, kind: str, mode: str, repo_id: str, repo_type: str,
-              local_dir: str, private: bool = False) -> Job:
+    def start(self, *, kind: str, mode: str = "", repo_id: str = "", repo_type: str = "",
+              local_dir: str = "", private: bool = False, label: str = "", **extra) -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12],
             kind=kind, mode=mode, repo_id=repo_id, repo_type=repo_type,
-            local_dir=local_dir, private=private,
+            local_dir=local_dir, private=private, label=label, spec=extra,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -86,6 +89,7 @@ class JobManager:
         spec = {
             "kind": kind, "mode": mode, "repo_id": repo_id,
             "repo_type": repo_type, "local_dir": local_dir, "private": private,
+            **extra,
         }
         spec_file = Path(tempfile.gettempdir()) / f"hfutil_job_{job.id}.json"
         spec_file.write_text(json.dumps(spec), encoding="utf-8")

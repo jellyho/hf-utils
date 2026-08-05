@@ -27,7 +27,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+/* min-height, not height: a sticky child can only stick within its parent's box, so
+   body{height:100%} would unstick the app bar as soon as you scrolled past one screen. */
+html, body { margin: 0; min-height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -35,12 +37,16 @@ body {
 }
 
 /* ---- top bar ---- */
+/* Brand bar + tabs travel together as one sticky block; each view's toolbar sticks
+   directly beneath it (see .toolbar), so the tabs and the action buttons stay put
+   while a long list scrolls under them. --appbar-h is measured in app.js. */
+.appbar { position: sticky; top: 0; z-index: 30; }
+
 .topbar {
   display: flex; align-items: center; gap: 16px;
   padding: 12px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 10;
 }
 .brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .brand .logo { font-size: 20px; }
@@ -66,7 +72,14 @@ body {
 .view { padding: 16px 20px 60px; }
 
 /* ---- toolbar ---- */
-.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  position: sticky; top: var(--appbar-h, 92px); z-index: 20;
+  background: var(--bg);
+  /* Bleed the page padding so nothing shows through the gap while scrolling. */
+  margin: -16px -20px 14px; padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
 .spacer { flex: 1; }
 .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .search, .select {
@@ -91,15 +104,18 @@ body {
 .btn.tiny { padding: 4px 8px; font-size: 12px; }
 
 /* ---- table ---- */
+/* No overflow here on purpose: `overflow: auto` would make this a scroll container,
+   and the sticky <thead> would then stick to *it* rather than to the page — which,
+   since it is not height-constrained, means it never sticks at all. */
 .tablewrap {
   border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: auto; background: var(--panel);
+  background: var(--panel);
 }
 table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
 .grid thead th {
-  position: sticky; top: 0; background: var(--panel-2);
+  position: sticky; top: var(--chrome-h, 150px); background: var(--panel-2);
   text-align: left; padding: 10px 12px; font-size: 12px; color: var(--muted);
-  border-bottom: 1px solid var(--border); white-space: nowrap; z-index: 1;
+  border-bottom: 1px solid var(--border); white-space: nowrap; z-index: 5;
 }
 .grid tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .grid tbody tr:hover { background: var(--panel-2); }
@@ -271,7 +287,9 @@ td.c-check { text-align: center; }
 }
 .ds-slider { flex: 1; min-width: 0; accent-color: var(--accent-2); }
 .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.ds-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ds-metarow { display: flex; align-items: center; gap: 10px; }
+.ds-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.ds-metarow > .btn { flex: 0 0 auto; }
 .ds-tasktext { color: var(--muted); font-size: 13px; }
 
 /* ---- timeseries plots (small multiples) ----
@@ -323,6 +341,17 @@ td.c-check { text-align: center; }
 .plot-svg { display: block; width: 100%; height: 64px; cursor: crosshair; touch-action: none; }
 .plot-zero { stroke: var(--plot-grid-ink); stroke-width: 1; }
 .plot-cursor { stroke: var(--plot-cursor-ink); stroke-width: 1; opacity: 0.75; }
+
+/* ---- render dialog ---- */
+.render-modal { width: min(600px, 100%); max-height: 88vh; overflow-y: auto; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row .field { margin-bottom: 12px; }
+.cam-checks, .checkgrid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 12px;
+}
+.cam-checks { padding: 6px 0; }
+.checkgrid { margin: 6px 0 14px; }
+#rdUseView { margin: -4px 0 12px; }
 
 /* ---- folder picker ---- */
 .path-row { display: flex; gap: 8px; }

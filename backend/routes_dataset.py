@@ -11,9 +11,12 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from hfutil.dataset import meta as dsmeta
 from hfutil.dataset import video as dsvideo
+
+from .jobs import JOBS
 
 router = APIRouter(prefix="/api/ds", tags=["dataset"])
 
@@ -113,6 +116,62 @@ def probe_video(root: str, key: str, chunk: int = 0, file: int = 0) -> dict:
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"missing video file: {path.name}")
     return dsvideo.probe(path)
+
+
+class RenderBody(BaseModel):
+    root: str
+    episodes: list[int]
+    out_dir: Optional[str] = None
+    cameras: list[str] = Field(default_factory=list)   # [] = all, in meta order
+    speed: float = 1.0
+    height: int = 320
+    fps_cap: int = 60
+    frame_start: int = 0
+    frame_end: Optional[int] = None
+    fmt: str = "mp4"
+    gif_fps: int = 12
+    gif_width: int = 640
+    show_camera_labels: bool = True
+    show_counter: bool = True
+    show_task: bool = False
+    write_metadata: bool = True
+
+
+@router.post("/render")
+def render(body: RenderBody) -> dict:
+    base = _root(body.root)
+    info = _info(base)
+    if not body.episodes:
+        raise HTTPException(status_code=400, detail="no episodes selected")
+    if body.fmt not in ("mp4", "gif"):
+        raise HTTPException(status_code=400, detail="fmt must be mp4 or gif")
+    if not dsvideo.find_ffmpeg():
+        raise HTTPException(
+            status_code=503,
+            detail="ffmpeg not found — install it on PATH or `pip install imageio-ffmpeg`",
+        )
+
+    known = set(dsmeta.camera_keys(info))
+    unknown = [c for c in body.cameras if c not in known]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"unknown camera(s): {unknown}")
+
+    # Renders go OUTSIDE the dataset folder by default, so they never ride along on a
+    # subsequent push_to_hub.
+    out_dir = Path(body.out_dir).expanduser() if body.out_dir else base.parent / f"{base.name}_renders"
+
+    options = body.model_dump(exclude={"root", "episodes", "out_dir"})
+    job = JOBS.start(
+        kind="ds_render",
+        label=f"{base.name} · {len(body.episodes)} ep → {body.fmt}",
+        local_dir=str(out_dir),
+        ds_root=str(base),
+        dataset_name=base.name,
+        episodes=body.episodes,
+        out_dir=str(out_dir),
+        options=options,
+    )
+    return job.public()
 
 
 @router.get("/series")

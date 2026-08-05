@@ -350,6 +350,21 @@ function dsWire() {
     Object.values(DS.videos).forEach((v) => { v.playbackRate = DS.speed; });
   });
 
+  // render dialog
+  $("#dsRenderBtn").addEventListener("click", openRenderDialog);
+  $("#rdCancel").addEventListener("click", () => ($("#renderModal").hidden = true));
+  $("#rdStart").addEventListener("click", startRender);
+  $("#rdFormat").addEventListener("change", (e) => {
+    $("#rdGifRow").hidden = e.target.value !== "gif";
+  });
+  $("#rdBrowse").addEventListener("click", () => openFolderPicker("rdOutDir", "Choose an output folder"));
+  $("#rdUseView").addEventListener("click", () => {
+    // "from the current frame to the end" is the common case for trimming a clip
+    $("#rdFrom").value = String(DS.frame);
+    $("#rdTo").value = String(DS.ep ? DS.ep.length - 1 : "");
+    toast(`Range set to frames ${DS.frame}–${DS.ep.length - 1}`, "info", 3000);
+  });
+
   $("#dsCamSize").addEventListener("input", (e) => {
     try { localStorage.setItem("hfutil.camSize", e.target.value); } catch { /* private mode */ }
     layoutCams();
@@ -385,6 +400,85 @@ function dsWire() {
     const last = localStorage.getItem("hfutil.dsRoot");
     if (last) $("#dsPath").value = last;
   } catch { /* private mode */ }
+}
+
+/* ----------------------------------------------------------------------- *
+ * Render dialog
+ * ----------------------------------------------------------------------- */
+/** "7", "0,3,5", "0-9" and combinations thereof -> a sorted list of valid episodes. */
+function parseEpisodeSpec(text) {
+  const valid = new Set(DS.eps.map((e) => e.ep));
+  const out = new Set();
+  for (const chunk of text.split(",")) {
+    const part = chunk.trim();
+    if (!part) continue;
+    const range = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const [a, b] = [Number(range[1]), Number(range[2])].sort((x, y) => x - y);
+      for (let i = a; i <= b; i++) if (valid.has(i)) out.add(i);
+    } else if (/^\d+$/.test(part) && valid.has(Number(part))) {
+      out.add(Number(part));
+    }
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+async function openRenderDialog() {
+  if (!DS.ep) return toast("Open a dataset and pick an episode first", "err");
+  try {
+    const caps = await api("/api/ds/capabilities");
+    if (!caps.can_render) {
+      return toast("ffmpeg not found — install it on PATH or `pip install imageio-ffmpeg`", "err", 12000);
+    }
+    $("#renderSub").textContent = caps.can_label
+      ? `${DS.info.name} · ffmpeg from ${caps.ffmpeg_source}`
+      : `${DS.info.name} · ffmpeg from ${caps.ffmpeg_source} — no usable font, overlays will be skipped`;
+  } catch (e) {
+    return toast(`Cannot check ffmpeg: ${e.message}`, "err");
+  }
+
+  $("#rdEpisodes").value = String(DS.ep.ep);
+  $("#rdFrom").value = "0";
+  $("#rdTo").value = "";
+  const cams = $("#rdCameras");
+  cams.replaceChildren(...Object.keys(DS.ep.videos).map((key) => {
+    const cb = el("input", { type: "checkbox", value: key });
+    return el("label", { className: "checkline" }, cb, el("span", {}, shortCam(key)));
+  }));
+  $("#rdGifRow").hidden = $("#rdFormat").value !== "gif";
+  $("#renderModal").hidden = false;
+}
+
+async function startRender() {
+  const episodes = parseEpisodeSpec($("#rdEpisodes").value);
+  if (!episodes.length) return toast("No valid episodes in that list", "err");
+
+  const cameras = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
+  const toRaw = $("#rdTo").value.trim();
+  const body = {
+    root: DS.root,
+    episodes,
+    cameras,
+    out_dir: $("#rdOutDir").value.trim() || null,
+    fmt: $("#rdFormat").value,
+    speed: Number($("#rdSpeed").value),
+    height: Number($("#rdHeight").value) || 320,
+    gif_fps: Number($("#rdGifFps").value) || 12,
+    gif_width: Number($("#rdGifWidth").value) || 640,
+    frame_start: Math.max(0, Number($("#rdFrom").value) || 0),
+    frame_end: toRaw === "" ? null : Number(toRaw),
+    show_camera_labels: $("#rdLabels").checked,
+    show_counter: $("#rdCounter").checked,
+    show_task: $("#rdTask").checked,
+    write_metadata: $("#rdMeta").checked,
+  };
+  try {
+    await api("/api/ds/render", { method: "POST", body });
+    $("#renderModal").hidden = true;
+    toast(`Rendering ${episodes.length} episode(s) — see the Transfer tab for progress`, "info", 7000);
+  } catch (e) {
+    toast(`Render failed to start: ${e.message}`, "err", 10000);
+  }
 }
 
 /** Called by app.js when the LeRobot tab is shown or hidden. */

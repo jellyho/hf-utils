@@ -78,6 +78,43 @@ def do_upload(spec: dict) -> None:
         log(f"[hf] uploaded -> {url}")
 
 
+# --------------------------------------------------------------------------- #
+# Render episodes to MP4 / GIF
+# --------------------------------------------------------------------------- #
+def do_ds_render(spec: dict) -> None:
+    from hfutil.dataset import meta as dsmeta
+    from hfutil.dataset.render import RenderError, RenderOptions, render_episode
+
+    root = dsmeta.resolve_root(spec["ds_root"])
+    info = dsmeta.read_info(root)
+    rows = {e["ep"]: e for e in dsmeta.episodes(root, info)}
+    opts = RenderOptions(**spec["options"])
+    out_dir = Path(spec["out_dir"])
+    name = spec.get("dataset_name") or root.name
+    episodes = spec["episodes"]
+
+    log(f"[render] {len(episodes)} episode(s) -> {out_dir}  ({opts.fmt}, {opts.speed:g}x)")
+    ok, failed = 0, []
+    for n, ep in enumerate(episodes, 1):
+        row = rows.get(int(ep))
+        if row is None:
+            log(f"[skip] episode {ep} not found")
+            failed.append(ep)
+            continue
+        log(f"[{n}/{len(episodes)}] episode {ep}")
+        try:
+            render_episode(root, info, row, out_dir, opts, name, log=log)
+            ok += 1
+        except RenderError as exc:
+            log(f"ERROR episode {ep}: {exc}")
+            failed.append(ep)
+    log(f"[render] {ok}/{len(episodes)} rendered into {out_dir}")
+    if not ok:
+        raise RuntimeError(f"no episodes rendered (failed: {failed})")
+    if failed:
+        log(f"[warn] failed episodes: {failed}")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         log("worker: missing spec file argument")
@@ -88,6 +125,8 @@ def main() -> int:
             do_download(spec)
         elif spec["kind"] == "upload":
             do_upload(spec)
+        elif spec["kind"] == "ds_render":
+            do_ds_render(spec)
         else:
             log(f"worker: unknown kind {spec['kind']!r}")
             return 2

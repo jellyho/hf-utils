@@ -47,6 +47,13 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   cameras, 0 dropped frames**, and it stays that fast for hour-long files because LeRobot
   writes a keyframe every ~2 frames.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
+- **Render** episodes to **MP4 or GIF** — pick episodes (`7`, `0,3,5`, `0-9`), which cameras
+  and in what order, speed (0.5×–16×), panel height, and a **frame range** so you can cut a
+  short clip out of one episode ("use the current view as the range" fills it from the
+  scrubber). Overlays are optional: camera labels, an episode/time/frame counter, the task
+  text. MP4s also get the dataset, task, fps and speed written into the file's own metadata.
+  Renders run as background jobs with a live log, and land in `<dataset>_renders/` next to
+  the dataset — never inside it, so they can't ride along on a later upload.
 - **Plots**: pick up to three features (e.g. `action.joint_pos` + `observation.state.joint_pos`)
   and get one small chart **per dimension**, with the commanded and measured traces overlaid.
   Dimension identity comes from position, not colour — 14 categorical hues would not be
@@ -101,7 +108,8 @@ hf-util/
 ├── hfutil/                 # reusable library — no FastAPI, no lerobot/torch at import time
 │   └── dataset/
 │       ├── meta.py         # LeRobot v3.0 metadata reader (pyarrow only)
-│       └── video.py        # video path resolution, ffmpeg/font discovery, codec probe
+│       ├── video.py        # video path resolution, ffmpeg/font discovery, codec probe
+│       └── render.py       # builds the ffmpeg command for an episode -> MP4 / GIF
 ├── backend/                # the local web app
 │   ├── main.py             # FastAPI app: repos / collections / transfer / jobs
 │   ├── routes_dataset.py   # /api/ds/* — the LeRobot viewer endpoints
@@ -174,4 +182,7 @@ GET  /api/ds/episodes?root=                 # per-episode length, task, video wi
 GET  /api/ds/video?root=&key=&chunk=&file=  # the shared MP4, served with HTTP Range
 GET  /api/ds/videoprobe?root=&key=&…        # codec / resolution (PyAV)
 GET  /api/ds/series?root=&ep=&keys=&max_points=   # downsampled per-episode timeseries
+POST /api/ds/render              {root, episodes[], cameras[], fmt, speed, height,
+                                  frame_start, frame_end, gif_fps, gif_width,
+                                  show_camera_labels, show_counter, show_task, out_dir}
 ```
