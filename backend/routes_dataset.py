@@ -50,14 +50,20 @@ def open_dataset(root: str) -> dict:
 
 
 @router.get("/episodes")
-def list_episodes(root: str, offset: int = 0, limit: int = 5000) -> dict:
+def list_episodes(root: str, offset: int = 0, limit: Optional[int] = None) -> dict:
+    """All episodes by default.
+
+    `limit` is opt-in: defaulting it would silently truncate large datasets, since the
+    viewer loads the list in one shot and keys its filter/keyboard navigation off it.
+    """
     base = _root(root)
     info = _info(base)
     try:
         rows = dsmeta.episodes(base, info)
     except dsmeta.DatasetError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    window = rows[offset: offset + limit]
+    offset = max(0, offset)
+    window = rows[offset: offset + limit] if limit is not None else rows[offset:]
     return {"total": len(rows), "offset": offset, "items": window}
 
 

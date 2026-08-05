@@ -709,6 +709,12 @@ function wire() {
     if (state.tab === "collection") {
       state.colItems = {};
       await loadCollections(true); renderCollections();
+    } else if (state.tab === "lerobot") {
+      // Not a repo tab — reloading it through loadRepos() would 422 and then blow up on
+      // state.repos["lerobot"]. Re-open the dataset instead.
+      if (typeof dsReload === "function") await dsReload();
+    } else if (state.tab === "transfer") {
+      await loadJobs();
     } else {
       await loadRepos(state.tab, true); renderRepos();
     }

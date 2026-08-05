@@ -135,6 +135,15 @@ async function ensurePlayers(ep) {
       const cam = (DS.info.cameras || []).find((c) => c.key === key) || {};
       const v = el("video", { muted: true, playsInline: true, preload: "auto" });
       v.className = "ds-video";
+      // Backstop for the episode boundary. playbackTick() normally handles it, but it
+      // runs on requestAnimationFrame, which is suspended while the tab is hidden — the
+      // video would then keep playing straight into the next episode of the shared file.
+      // timeupdate keeps firing (throttled) in background tabs.
+      v.addEventListener("timeupdate", () => {
+        if (!DS.playing || !DS.ep) return;
+        const win = DS.ep.videos[key];
+        if (win && v.currentTime >= win.to_timestamp - 0.5 / DS.fps) endOfEpisode();
+      });
       const cell = el("div", { className: "ds-cam" },
         v, el("div", { className: "ds-camlabel" }, shortCam(key) + (cam.width ? ` · ${cam.width}×${cam.height}` : "")));
       box.append(cell);
@@ -242,15 +251,27 @@ function playbackTick() {
 
   // Stop at the episode boundary — the file keeps going into the next episode.
   if (DS.frame >= DS.ep.length - 1 || master.currentTime >= w.to_timestamp - 0.5 / DS.fps) {
-    stopPlayback();
+    endOfEpisode();
     return;
   }
   DS.rafId = requestAnimationFrame(playbackTick);
 }
 
+/** Pause and snap back onto the episode's last frame.
+ *  Neither watchdog fires exactly on the boundary (rAF ~16 ms, timeupdate ~250 ms), so
+ *  without the snap-back the viewer can sit on a frame belonging to the NEXT episode. */
+function endOfEpisode() {
+  if (!DS.ep) return;
+  stopPlayback();
+  seekToFrame(DS.ep.length - 1, true);
+}
+
+let playToken = 0;
+
 async function startPlayback() {
   if (!DS.ep || !DS.masterKey) return;
   if (DS.frame >= DS.ep.length - 1) seekToFrame(0, true);
+  const token = ++playToken;
   DS.playing = true;
   updateTransport();
   try {
@@ -259,13 +280,20 @@ async function startPlayback() {
       return v.play();
     }));
   } catch (e) {
+    // Pausing/scrubbing/tab-switching while play() is still starting rejects those
+    // promises with AbortError. That is the user pausing, not a failure — and the
+    // session it belonged to is already over, so never tear down a newer one.
+    if (token !== playToken) return;
     stopPlayback();
-    return toast(`Playback failed: ${e.message}`, "err", 8000);
+    if (e && e.name !== "AbortError") toast(`Playback failed: ${e.message}`, "err", 8000);
+    return;
   }
+  if (token !== playToken || !DS.playing) return;
   DS.rafId = requestAnimationFrame(playbackTick);
 }
 
 function stopPlayback() {
+  playToken++;  // invalidate any in-flight startPlayback()
   DS.playing = false;
   if (DS.rafId) { cancelAnimationFrame(DS.rafId); DS.rafId = null; }
   Object.values(DS.videos).forEach((v) => { try { v.pause(); } catch { /* not ready */ } });
@@ -324,6 +352,11 @@ function dsWire() {
 /** Called by app.js when the LeRobot tab is shown or hidden. */
 function dsOnTab(active) {
   if (!active) stopPlayback();
+}
+
+/** Called by app.js's Refresh button while the LeRobot tab is active. */
+async function dsReload() {
+  if (DS.root) await dsOpen(DS.root);
 }
 
 dsWire();

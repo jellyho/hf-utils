@@ -307,7 +307,7 @@ def series(root: Path, ep: int, keys: Iterable[str], max_points: int = 1500) -> 
     if row is None:
         raise DatasetError(f"episode {ep} not found")
 
-    keys = [k for k in keys if k in features]
+    keys = list(dict.fromkeys(k for k in keys if k in features))  # dedupe, keep order
     if not keys:
         raise DatasetError("no valid feature keys requested")
 
@@ -316,9 +316,16 @@ def series(root: Path, ep: int, keys: Iterable[str], max_points: int = 1500) -> 
         raise DatasetError(f"missing data file: {path}")
 
     # Predicate pushdown: correct no matter how episodes are packed into files.
+    # Deduplicate the projection: pyarrow happily returns a table with the same field
+    # twice, and table.column(name) then raises KeyError. `timestamp`/`frame_index` are
+    # declared as features, so a caller may legitimately ask for them by name.
+    projection: list[str] = []
+    for column in ("frame_index", "timestamp", *keys):
+        if column not in projection:
+            projection.append(column)
     table = pq.read_table(
         path,
-        columns=["frame_index", "timestamp", *keys],
+        columns=projection,
         filters=[("episode_index", "==", int(ep))],
     )
     n = table.num_rows
