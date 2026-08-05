@@ -481,6 +481,8 @@ async function switchTab(tab) {
 /* ----------------------------------------------------------------------- *
  * Transfer (download / upload) + jobs
  * ----------------------------------------------------------------------- */
+const JOB_LOG_TAIL = 8;
+
 let jobsTimer = null;
 function stopJobsPolling() { if (jobsTimer) { clearInterval(jobsTimer); jobsTimer = null; } }
 function ensurePolling(anyRunning) {
@@ -557,8 +559,51 @@ function renderJobCard(j) {
     head.append(open);
   }
   card.append(head);
-  const log = (j.log || []).join("\n");
-  if (log) card.append(el("pre", { className: "job-log" }, log));
+
+  // Name the files this job produced — the whole point of opening the folder is to
+  // find them, so don't make the user dig them out of the log.
+  if (j.outputs && j.outputs.length) {
+    const files = el("div", { className: "job-files" });
+    for (const path of j.outputs) {
+      const name = path.split(/[\\/]/).pop();
+      const chip = el("button", { className: "file-chip", title: path, type: "button" }, name);
+      chip.addEventListener("click", () => revealFolder(path));
+      files.append(chip);
+    }
+    card.append(files);
+  }
+
+  // Show only the tail by default — a download's tqdm output runs to hundreds of lines
+  // and would bury every other job on the page.
+  const lines = j.log || [];
+  if (lines.length) {
+    const wrap = el("div", { className: "job-logwrap" });
+    const pre = el("pre", { className: "job-log" }, lines.slice(-JOB_LOG_TAIL).join("\n"));
+    wrap.append(pre);
+    const total = j.log_lines ?? lines.length;
+    if (total > JOB_LOG_TAIL) {
+      // The list endpoint only sends a short tail, so expanding fetches the full log.
+      const more = el("button", { className: "job-logmore", type: "button" },
+        `▼ show all ${total} lines`);
+      let expanded = false;
+      more.addEventListener("click", async () => {
+        if (expanded) {
+          pre.textContent = lines.slice(-JOB_LOG_TAIL).join("\n");
+          more.textContent = `▼ show all ${total} lines`;
+          expanded = false;
+          return;
+        }
+        try {
+          const full = await api(`/api/jobs/${j.id}`);
+          pre.textContent = (full.log || []).join("\n");
+          more.textContent = "▲ show less";
+          expanded = true;
+        } catch (e) { toast(`Could not load log: ${e.message}`, "err"); }
+      });
+      wrap.append(more);
+    }
+    card.append(wrap);
+  }
   return card;
 }
 

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from hfutil.dataset import edit as dsedit
 from hfutil.dataset import meta as dsmeta
 from hfutil.dataset import video as dsvideo
 
@@ -170,6 +171,116 @@ def render(body: RenderBody) -> dict:
         episodes=body.episodes,
         out_dir=str(out_dir),
         options=options,
+    )
+    return job.public()
+
+
+# --------------------------------------------------------------------------- #
+# Editing: task strings, subtask annotations, episode deletion
+# --------------------------------------------------------------------------- #
+class SetTasksBody(BaseModel):
+    root: str
+    episode_tasks: dict[int, str]
+    backup: bool = True
+
+
+@router.post("/edit/tasks")
+def edit_tasks(body: SetTasksBody) -> dict:
+    base = _root(body.root)
+    _info(base)
+    if not body.episode_tasks:
+        raise HTTPException(status_code=400, detail="no episodes given")
+    job = JOBS.start(
+        kind="ds_set_tasks",
+        label=f"{base.name} · task on {len(body.episode_tasks)} ep",
+        local_dir=str(base),
+        ds_root=str(base),
+        episode_tasks={str(k): v for k, v in body.episode_tasks.items()},
+        backup=body.backup,
+    )
+    return job.public()
+
+
+class DeleteEpisodesBody(BaseModel):
+    root: str
+    episodes: list[int]
+
+
+@router.post("/edit/delete-episodes")
+def edit_delete_episodes(body: DeleteEpisodesBody) -> dict:
+    base = _root(body.root)
+    info = _info(base)
+    total = len(dsmeta.episodes(base, info))
+    wanted = sorted(set(body.episodes))
+    if not wanted:
+        raise HTTPException(status_code=400, detail="no episodes selected")
+    if len(wanted) >= total:
+        raise HTTPException(status_code=400, detail="refusing to delete every episode")
+
+    # Deleting writes a whole second copy before swapping, so check there is room.
+    import shutil as _shutil
+
+    used = sum(f.stat().st_size for f in base.rglob("*") if f.is_file())
+    free = _shutil.disk_usage(base.parent).free
+    if free < used * 1.05:
+        raise HTTPException(
+            status_code=507,
+            detail=(f"not enough free space: the dataset is {used/1e9:.1f} GB and delete "
+                    f"needs about that much again, but only {free/1e9:.1f} GB is free"),
+        )
+
+    job = JOBS.start(
+        kind="ds_delete_episodes",
+        label=f"{base.name} · delete {len(wanted)} ep",
+        local_dir=str(base.parent),
+        ds_root=str(base),
+        episodes=wanted,
+    )
+    return job.public()
+
+
+@router.get("/annotations")
+def get_annotations(root: str) -> dict:
+    base = _root(root)
+    try:
+        return dsedit.read_annotations(base)
+    except dsedit.EditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class AnnotationsBody(BaseModel):
+    root: str
+    doc: dict
+
+
+@router.post("/annotations")
+def save_annotations(body: AnnotationsBody) -> dict:
+    base = _root(body.root)
+    try:
+        dsedit.write_annotations(base, body.doc)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"could not save annotations: {exc}")
+    return {"ok": True}
+
+
+class ExportSubtasksBody(BaseModel):
+    root: str
+    backup: bool = True
+
+
+@router.post("/edit/export-subtasks")
+def edit_export_subtasks(body: ExportSubtasksBody) -> dict:
+    base = _root(body.root)
+    _info(base)
+    doc = dsedit.read_annotations(base)
+    if not doc.get("episodes"):
+        raise HTTPException(status_code=400, detail="nothing annotated yet")
+    job = JOBS.start(
+        kind="ds_export_subtasks",
+        label=f"{base.name} · export subtasks",
+        local_dir=str(base),
+        ds_root=str(base),
+        backup=body.backup,
     )
     return job.public()
 

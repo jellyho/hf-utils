@@ -219,8 +219,28 @@
           <!-- #dsEpMeta is replaced wholesale on episode change, so the button lives
                outside it or it would be wiped on the first selection. -->
           <div class="ds-meta" id="dsEpMeta"></div>
+          <button class="btn" type="button" id="dsEditTaskBtn" title="Change this episode's task text">✎ Task…</button>
           <button class="btn" type="button" id="dsRenderBtn" title="Render episodes to MP4 / GIF">⎙ Render…</button>
+          <button class="btn danger" type="button" id="dsDeleteBtn" title="Delete episodes">🗑 Delete…</button>
         </div>
+
+        <!-- Subtask annotation: drag a span on the strip, then click a label -->
+        <section class="ds-annot" id="dsAnnot">
+          <div class="annot-head">
+            <b>Subtasks</b>
+            <span class="hint" id="annotHint">drag on the strip to select frames, then click a label</span>
+            <span class="spacer"></span>
+            <span class="mono" id="annotSel">no selection</span>
+            <button class="btn tiny ghost" type="button" id="annotClearSel">Clear selection</button>
+            <button class="btn tiny" type="button" id="annotExport">Export to dataset…</button>
+          </div>
+          <div class="annot-strip" id="annotStrip">
+            <div class="annot-segs" id="annotSegs"></div>
+            <div class="annot-sel" id="annotSelBox" hidden></div>
+            <div class="annot-cursor" id="annotCursor"></div>
+          </div>
+          <div class="annot-labels" id="annotLabels"></div>
+        </section>
 
         <section class="ds-plots">
           <div class="plot-head">
@@ -235,6 +255,39 @@
       </main>
     </div>
   </section>
+
+  <!-- Edit task text -->
+  <div class="modal-backdrop" id="taskModal" hidden>
+    <div class="modal">
+      <h3>Edit task</h3>
+      <p class="modal-sub" id="taskSub"></p>
+      <label class="field"><span>Episodes</span>
+        <input class="search" id="tkEpisodes" placeholder="7  or  0,3,5  or  0-9" autocomplete="off" /></label>
+      <label class="field"><span>Task text</span>
+        <textarea class="search" id="tkText" rows="3" placeholder="Pick up the dish and put it on the drainer"></textarea></label>
+      <div class="known-tasks" id="tkKnown"></div>
+      <p class="hint">Existing task strings are reused; a new one is appended. The files
+        that change are backed up into <code>.hfutil_bak/</code> inside the dataset.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="tkCancel">Cancel</button>
+        <button class="btn primary" type="button" id="tkSave">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage subtask labels -->
+  <div class="modal-backdrop" id="labelModal" hidden>
+    <div class="modal">
+      <h3>Subtask labels</h3>
+      <p class="modal-sub">Set these up once, then annotate by dragging a span and clicking a label.</p>
+      <label class="field"><span>One label per line</span>
+        <textarea class="search" id="lbText" rows="8" placeholder="reach&#10;grasp&#10;lift&#10;place&#10;retreat"></textarea></label>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="lbCancel">Cancel</button>
+        <button class="btn primary" type="button" id="lbSave">Save labels</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Render options -->
   <div class="modal-backdrop" id="renderModal" hidden>
@@ -345,5 +398,6 @@
   <script src="/app.js"></script>
   <script src="/plot.js"></script>
   <script src="/dataset.js"></script>
+  <script src="/annotate.js"></script>
 </body>
 </html>

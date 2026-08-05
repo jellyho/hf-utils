@@ -72,6 +72,7 @@ async function dsOpen(path) {
     $("#dsCams").replaceChildren();
     renderEpisodeList();
     renderPlotPicker();
+    if (typeof annLoad === "function") await annLoad();
     if (DS.eps.length) selectEpisode(DS.eps[0].ep);
   } catch (e) {
     $("#dsInfo").textContent = "";
@@ -231,6 +232,7 @@ async function selectEpisode(index) {
   );
   seekToFrame(0, true);
   onEpisodeChangedForPlots();
+  if (typeof annRender === "function") { ANN.sel = null; annRender(); }
 }
 
 function seekToFrame(f, force = false) {
@@ -255,6 +257,7 @@ function updateTransport() {
     `${DS.frame} / ${DS.ep.length - 1}  ·  ${t.toFixed(2)}s`;
   $("#dsPlay").textContent = DS.playing ? "❚❚" : "▶";
   if (typeof updatePlotCursor === "function") updatePlotCursor();
+  if (typeof annUpdateCursor === "function") annUpdateCursor();
 }
 
 /* ----------------------------------------------------------------------- *
@@ -349,6 +352,12 @@ function dsWire() {
     DS.speed = Number(e.target.value);
     Object.values(DS.videos).forEach((v) => { v.playbackRate = DS.speed; });
   });
+
+  // editing
+  $("#dsEditTaskBtn").addEventListener("click", openTaskDialog);
+  $("#tkCancel").addEventListener("click", () => ($("#taskModal").hidden = true));
+  $("#tkSave").addEventListener("click", saveTask);
+  $("#dsDeleteBtn").addEventListener("click", deleteEpisodesDialog);
 
   // render dialog
   $("#dsRenderBtn").addEventListener("click", openRenderDialog);
@@ -566,6 +575,93 @@ async function startRender() {
   } catch (e) {
     toast(`Render failed to start: ${e.message}`, "err", 10000);
   }
+}
+
+/* ----------------------------------------------------------------------- *
+ * Editing: task text, episode deletion
+ * ----------------------------------------------------------------------- */
+function openTaskDialog() {
+  if (!DS.ep) return toast("Pick an episode first", "err");
+  $("#taskSub").textContent = `${DS.info.name} · ${DS.eps.length} episodes`;
+  $("#tkEpisodes").value = String(DS.ep.ep);
+  $("#tkText").value = DS.ep.tasks[0] || "";
+  const known = $("#tkKnown");
+  known.replaceChildren();
+  for (const t of DS.info.tasks || []) {
+    const chip = el("button", { className: "chip", type: "button", title: t },
+      t.length > 46 ? t.slice(0, 45) + "…" : t);
+    chip.addEventListener("click", () => { $("#tkText").value = t; });
+    known.append(chip);
+  }
+  $("#taskModal").hidden = false;
+  $("#tkText").focus();
+}
+
+async function saveTask() {
+  const episodes = parseEpisodeSpec($("#tkEpisodes").value);
+  if (!episodes.length) return toast("No valid episodes in that list", "err");
+  const text = $("#tkText").value.trim();
+  if (!text) return toast("Task text cannot be empty", "err");
+  const episode_tasks = Object.fromEntries(episodes.map((e) => [e, text]));
+  try {
+    await api("/api/ds/edit/tasks", { method: "POST", body: { root: DS.root, episode_tasks } });
+    $("#taskModal").hidden = true;
+    toast(`Updating task on ${episodes.length} episode(s) — see the Jobs tab`, "info", 6000);
+    loadJobs();
+    watchEditJob();
+  } catch (e) {
+    toast(`Could not update task: ${e.message}`, "err", 10000);
+  }
+}
+
+async function deleteEpisodesDialog() {
+  if (!DS.ep) return toast("Open a dataset first", "err");
+  const spec = window.prompt(
+    `Delete which episodes? (e.g. ${DS.ep.ep}, or 0,3,5, or 0-9)\n\n` +
+    "The dataset is re-indexed afterwards, and the original is kept as a .backup- folder.",
+    String(DS.ep.ep));
+  if (spec === null) return;
+  const episodes = parseEpisodeSpec(spec);
+  if (!episodes.length) return toast("No valid episodes in that list", "err");
+  if (episodes.length >= DS.eps.length) return toast("Cannot delete every episode", "err");
+
+  const go = await confirmDelete({
+    title: `Delete ${episodes.length} episode(s)?`,
+    sub: "The dataset is rebuilt without them and every later episode is renumbered. " +
+         "The original is moved aside as a .backup- folder next to the dataset.",
+    items: episodes.map((e) => {
+      const row = DS.eps.find((x) => x.ep === e);
+      return `episode ${e} · ${row ? row.length : "?"} frames · ${row ? (row.tasks[0] || "") : ""}`;
+    }),
+  });
+  if (!go) return;
+  try {
+    await api("/api/ds/edit/delete-episodes", { method: "POST", body: { root: DS.root, episodes } });
+    toast(`Deleting ${episodes.length} episode(s) — see the Jobs tab`, "info", 6000);
+    loadJobs();
+    watchEditJob();
+  } catch (e) {
+    toast(`Delete failed to start: ${e.message}`, "err", 12000);
+  }
+}
+
+/** After a mutating job finishes, the on-disk state (and episode numbering) has moved —
+ *  reload rather than leaving the UI pointing at stale rows. */
+function watchEditJob() {
+  const started = Date.now();
+  const timer = setInterval(async () => {
+    try {
+      const data = await api("/api/jobs");
+      const busy = data.jobs.some((j) =>
+        j.status === "running" && String(j.kind).startsWith("ds_") && j.kind !== "ds_render");
+      if (!busy) {
+        clearInterval(timer);
+        await dsOpen(DS.root);
+        if (typeof annLoad === "function") annLoad();
+      }
+    } catch { /* transient */ }
+    if (Date.now() - started > 10 * 60 * 1000) clearInterval(timer);
+  }, 1500);
 }
 
 /** Called by app.js when the LeRobot tab is shown or hidden. */

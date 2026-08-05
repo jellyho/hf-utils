@@ -55,6 +55,17 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   task text. MP4s also get the dataset, task, fps and speed written into the file's own metadata.
   Renders run as background jobs with a live log, and land in `<dataset>_renders/` next to
   the dataset — never inside it, so they can't ride along on a later upload.
+- **Edit**: change an episode's **task** text (one episode, a list, or a range — existing
+  strings are offered as chips and reused), and **delete episodes** with automatic
+  re-indexing. Deletes go through lerobot's own `dataset_tools`, are verified on disk
+  before anything is swapped, keep the original as a `.backup-…` folder beside the
+  dataset, and refuse to start if there isn't room for the temporary copy.
+- **Subtask annotation**: set your label palette up once, then it's drag-and-click —
+  drag a span on the strip under the video, click a label (or press its number key).
+  Overlapping assignments carve the neighbours rather than stacking, so segments never
+  overlap. Segments live in `meta/lerobot_annotations.json` while you work; **Export**
+  writes a `subtask_index` column plus `meta/subtasks.parquet`, which **lerobot 0.4.4
+  reads natively** — `dataset[i]["subtask"]` returns your label string.
 - **Plots**: pick up to three features (e.g. `action.joint_pos` + `observation.state.joint_pos`)
   and get one small chart **per dimension**, with the commanded and measured traces overlaid.
   Dimension identity comes from position, not colour — 14 categorical hues would not be
@@ -110,7 +121,8 @@ hf-util/
 │   └── dataset/
 │       ├── meta.py         # LeRobot v3.0 metadata reader (pyarrow only)
 │       ├── video.py        # video path resolution, ffmpeg/font discovery, codec probe
-│       └── render.py       # builds the ffmpeg command for an episode -> MP4 / GIF
+│       ├── render.py       # builds the ffmpeg command for an episode -> MP4 / GIF
+│       └── edit.py         # task strings, subtask annotations + export (pyarrow, atomic)
 ├── backend/                # the local web app
 │   ├── main.py             # FastAPI app: repos / collections / transfer / jobs
 │   ├── routes_dataset.py   # /api/ds/* — the LeRobot viewer endpoints
@@ -119,7 +131,8 @@ hf-util/
 ├── frontend/
 │   ├── index.html          # single-page GUI
 │   ├── app.js              # repos / collections / transfer / folder picker
-│   ├── dataset.js          # the LeRobot viewer
+│   ├── dataset.js          # the LeRobot viewer + edit dialogs
+│   ├── annotate.js         # subtask annotation strip (drag a span, click a label)
 │   ├── plot.js             # small-multiple timeseries charts (inline SVG)
 │   └── styles.css
 ├── pyproject.toml          # `pip install -e .` — lets other projects import hfutil
@@ -186,4 +199,25 @@ GET  /api/ds/series?root=&ep=&keys=&max_points=   # downsampled per-episode time
 POST /api/ds/render              {root, episodes[], cameras[], fmt, speed, height,
                                   frame_start, frame_end, gif_fps, gif_width,
                                   show_camera_labels, show_counter, show_task, out_dir}
+
+POST /api/ds/edit/tasks          {root, episode_tasks: {ep: text}}
+POST /api/ds/edit/delete-episodes {root, episodes[]}
+GET  /api/ds/annotations?root=
+POST /api/ds/annotations         {root, doc}
+POST /api/ds/edit/export-subtasks {root}
 ```
+
+## Safety
+
+Nothing destructive happens without a copy first.
+
+| Operation | What is kept |
+|---|---|
+| Edit task | the files it touches → `<dataset>/.hfutil_bak/<timestamp>/` |
+| Export subtasks | same |
+| Delete episodes | the **whole original dataset** → `<dataset>.backup-delete-Nep.<timestamp>/` beside it |
+
+Deletes additionally: verify the rebuilt dataset on disk (episode count) *before* swapping
+it in, refuse to delete every episode, refuse to start without enough free disk for the
+temporary copy, and carry `meta/lerobot_annotations.json` across — renumbering it, since
+deleting shifts every later episode index and lerobot writes a fresh `meta/` of its own.

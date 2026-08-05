@@ -23,6 +23,9 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MAX_LOG_LINES = 500
 
+# Workers print this prefix followed by a path to report a file they produced.
+ARTIFACT_PREFIX = "@@artifact@@"
+
 
 @dataclass
 class Job:
@@ -35,6 +38,7 @@ class Job:
     private: bool = False
     label: str = ""    # what the UI shows; falls back to repo_id
     spec: dict = field(default_factory=dict)   # extra, kind-specific fields
+    outputs: list[str] = field(default_factory=list)   # files the job produced
     status: str = "running"   # running | success | error | cancelled
     started_at: float = field(default_factory=time.time)
     ended_at: Optional[float] = None
@@ -62,6 +66,7 @@ class Job:
             "local_dir": self.local_dir,
             "private": self.private,
             "label": self.label or self.repo_id,
+            "outputs": list(self.outputs),
             "status": self.status,
             "started_at": self.started_at,
             "ended_at": self.ended_at,
@@ -134,8 +139,16 @@ class JobManager:
             for raw in proc.stdout:
                 # tqdm uses \r to redraw; keep only the latest fragment of each chunk
                 line = raw.rstrip("\n").split("\r")[-1].rstrip()
-                if line:
-                    job.add_log(line)
+                if not line:
+                    continue
+                # Workers announce the files they produced on a sentinel line so the UI
+                # can name them; it is metadata, not log output.
+                if line.startswith(ARTIFACT_PREFIX):
+                    path = line[len(ARTIFACT_PREFIX):].strip()
+                    if path:
+                        job.outputs.append(path)
+                    continue
+                job.add_log(line)
             proc.wait()
             job.returncode = proc.returncode
         except Exception as exc:
