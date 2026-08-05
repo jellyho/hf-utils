@@ -135,6 +135,9 @@ async function ensurePlayers(ep) {
       const cam = (DS.info.cameras || []).find((c) => c.key === key) || {};
       const v = el("video", { muted: true, playsInline: true, preload: "auto" });
       v.className = "ds-video";
+      // Declare the aspect ratio up front (we know it from meta) so the panel has its
+      // final width before the first frame decodes — otherwise the strip reflows on load.
+      if (cam.width && cam.height) v.style.aspectRatio = `${cam.width} / ${cam.height}`;
       // Backstop for the episode boundary. playbackTick() normally handles it, but it
       // runs on requestAnimationFrame, which is suspended while the tab is hidden — the
       // video would then keep playing straight into the next episode of the shared file.
@@ -171,10 +174,33 @@ async function ensurePlayers(ep) {
     }
     v.playbackRate = DS.speed;
   }
+  layoutCams();
   if (pending.length) await Promise.all(pending);
 }
 
 const shortCam = (key) => key.replace(/^observation\.images\./, "");
+
+const CAM_GAP = 10;
+const CAM_MIN_H = 90;
+
+/** Size the camera strip: the requested height, capped so every panel fits on one row.
+ *  Panels are height-driven (width follows each camera's aspect ratio), so the row width
+ *  is `height * sum(aspect ratios)` — invert that to get the tallest height that fits. */
+function layoutCams() {
+  const box = $("#dsCams");
+  const keys = DS.ep ? Object.keys(DS.ep.videos) : [];
+  if (!box || !keys.length) return;
+
+  const ratios = keys.map((k) => {
+    const cam = (DS.info?.cameras || []).find((c) => c.key === k);
+    return cam && cam.width && cam.height ? cam.width / cam.height : 4 / 3;
+  });
+  const totalRatio = ratios.reduce((s, r) => s + r, 0) || 1;
+  const avail = box.clientWidth - CAM_GAP * (keys.length - 1);
+  const fitH = Math.floor(avail / totalRatio);
+  const want = Number($("#dsCamSize").value) || 200;
+  box.style.setProperty("--cam-h", `${Math.max(CAM_MIN_H, Math.min(want, fitH))}px`);
+}
 
 /* ----------------------------------------------------------------------- *
  * Selection + transport
@@ -320,6 +346,15 @@ function dsWire() {
     DS.speed = Number(e.target.value);
     Object.values(DS.videos).forEach((v) => { v.playbackRate = DS.speed; });
   });
+
+  $("#dsCamSize").addEventListener("input", (e) => {
+    try { localStorage.setItem("hfutil.camSize", e.target.value); } catch { /* private mode */ }
+    layoutCams();
+  });
+  let savedSize = 200;
+  try { savedSize = Number(localStorage.getItem("hfutil.camSize")) || 200; } catch { /* ignore */ }
+  $("#dsCamSize").value = String(savedSize);
+  window.addEventListener("resize", layoutCams);
 
   // Keyboard transport, only while the LeRobot tab is showing and not typing in a field.
   document.addEventListener("keydown", (e) => {

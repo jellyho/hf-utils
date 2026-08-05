@@ -238,14 +238,27 @@ td.c-check { text-align: center; }
 .ep-task { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ds-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-/* Grid, not flex-wrap: a wrapped flex item stretches to the full row, which made the
-   last camera render twice the size of the others. auto-fit keeps every panel equal. */
-.ds-cams { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+/* Panels are sized by HEIGHT, with width following each camera's aspect ratio.
+   Sizing by width instead (1fr columns) made the video area grow with the window and
+   with the camera count — two cameras alone could push the transport and plots off
+   screen. This way the video strip is always exactly --cam-h tall, whatever the
+   dataset contains, and never stretches a panel to fill leftover space. */
+/* nowrap: wrapping would stack panels into extra rows and reintroduce the vertical
+   blow-up this layout exists to prevent. layoutCams() shrinks the height so the row
+   fits; only when it hits the floor does the strip scroll sideways. */
+.ds-cams {
+  display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-start;
+  overflow-x: auto; overflow-y: hidden; padding-bottom: 2px;
+}
 .ds-cam {
   position: relative; border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; background: #000; min-width: 0;
+  overflow: hidden; background: #000;
+  flex: 0 0 auto; height: var(--cam-h, 200px); max-width: 100%;
 }
-.ds-video { display: block; width: 100%; height: auto; background: #000; }
+.ds-video { display: block; height: 100%; width: auto; max-width: 100%; background: #000; }
+
+.ds-size { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.ds-size input[type="range"] { width: 96px; accent-color: var(--accent-2); }
 .ds-camlabel {
   position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px; font-weight: 600;
