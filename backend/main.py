@@ -12,6 +12,7 @@ The server binds to 127.0.0.1 only — it is meant to run on your machine.
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -454,6 +455,43 @@ def fs_list(path: str = "") -> dict:
         "files_truncated": len(files) >= _MAX_FILES,
         "is_lerobot": (base / "meta" / "info.json").is_file(),
     }
+
+
+class OpenBody(BaseModel):
+    path: str
+
+
+@app.post("/api/fs/reveal")
+def fs_reveal(body: OpenBody) -> dict:
+    """Open a folder in the OS file manager (Explorer / Finder / xdg-open).
+
+    Only ever opens a *directory* that already exists — never executes a file — and the
+    server is bound to 127.0.0.1, so this cannot be triggered from another machine.
+    """
+    import shutil
+    import subprocess
+
+    target = Path(body.path).expanduser()
+    if target.is_file():
+        target = target.parent
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"no such folder: {target}")
+
+    try:
+        if os.name == "nt":
+            os.startfile(str(target))  # noqa: S606 — a directory, not a program
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+        else:
+            opener = shutil.which("xdg-open") or shutil.which("gio")
+            if not opener:
+                raise HTTPException(status_code=501, detail="no xdg-open on this system")
+            subprocess.Popen([opener, str(target)])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"could not open folder: {exc}")
+    return {"ok": True, "path": str(target)}
 
 
 class MkdirBody(BaseModel):

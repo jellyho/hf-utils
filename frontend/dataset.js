@@ -358,11 +358,19 @@ function dsWire() {
     $("#rdGifRow").hidden = e.target.value !== "gif";
   });
   $("#rdBrowse").addEventListener("click", () => openFolderPicker("rdOutDir", "Choose an output folder"));
+  $("#rdFrom").addEventListener("input", () => syncRange("from"));
+  $("#rdTo").addEventListener("input", () => syncRange("to"));
   $("#rdUseView").addEventListener("click", () => {
-    // "from the current frame to the end" is the common case for trimming a clip
+    if (!DS.ep) return;
     $("#rdFrom").value = String(DS.frame);
-    $("#rdTo").value = String(DS.ep ? DS.ep.length - 1 : "");
-    toast(`Range set to frames ${DS.frame}–${DS.ep.length - 1}`, "info", 3000);
+    if (Number($("#rdTo").value) < DS.frame) $("#rdTo").value = String(DS.ep.length - 1);
+    syncRange("from");
+  });
+  $("#rdFullRange").addEventListener("click", () => {
+    if (!DS.ep) return;
+    $("#rdFrom").value = "0";
+    $("#rdTo").value = String(DS.ep.length - 1);
+    syncRange();
   });
 
   $("#dsCamSize").addEventListener("input", (e) => {
@@ -438,8 +446,10 @@ async function openRenderDialog() {
   }
 
   $("#rdEpisodes").value = String(DS.ep.ep);
+  setRangeBounds(DS.ep.length - 1);
   $("#rdFrom").value = "0";
-  $("#rdTo").value = "";
+  $("#rdTo").value = String(DS.ep.length - 1);
+  syncRange();
   const cams = $("#rdCameras");
   cams.replaceChildren(...Object.keys(DS.ep.videos).map((key) => {
     const cb = el("input", { type: "checkbox", value: key });
@@ -449,12 +459,36 @@ async function openRenderDialog() {
   $("#renderModal").hidden = false;
 }
 
+/** Point the two range inputs at this episode's frame count. */
+function setRangeBounds(maxFrame) {
+  for (const id of ["#rdFrom", "#rdTo"]) {
+    $(id).max = String(Math.max(0, maxFrame));
+    $(id).min = "0";
+  }
+}
+
+/** Keep the handles from crossing, then repaint the fill and the readout. */
+function syncRange(pushed) {
+  const from = $("#rdFrom"), to = $("#rdTo");
+  let a = Number(from.value), b = Number(to.value);
+  if (a > b) {
+    // Whichever handle the user moved wins; the other one follows it.
+    if (pushed === "from") { b = a; to.value = String(b); }
+    else { a = b; from.value = String(a); }
+  }
+  const max = Number(from.max) || 1;
+  $("#rdFill").style.left = `${(a / max) * 100}%`;
+  $("#rdFill").style.width = `${((b - a) / max) * 100}%`;
+  const fps = DS.fps || 1;
+  $("#rdRangeText").textContent =
+    `${a} – ${b}  (${b - a + 1} frames · ${((b - a + 1) / fps).toFixed(2)}s)`;
+}
+
 async function startRender() {
   const episodes = parseEpisodeSpec($("#rdEpisodes").value);
   if (!episodes.length) return toast("No valid episodes in that list", "err");
 
   const cameras = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
-  const toRaw = $("#rdTo").value.trim();
   const body = {
     root: DS.root,
     episodes,
@@ -466,7 +500,8 @@ async function startRender() {
     gif_fps: Number($("#rdGifFps").value) || 12,
     gif_width: Number($("#rdGifWidth").value) || 640,
     frame_start: Math.max(0, Number($("#rdFrom").value) || 0),
-    frame_end: toRaw === "" ? null : Number(toRaw),
+    // Always send an explicit end; episodes shorter than the range are clamped server-side.
+    frame_end: Number($("#rdTo").value),
     show_camera_labels: $("#rdLabels").checked,
     show_counter: $("#rdCounter").checked,
     show_task: $("#rdTask").checked,

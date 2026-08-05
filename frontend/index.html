@@ -267,13 +267,19 @@
           <input class="search" id="rdGifWidth" type="number" min="120" max="1920" step="20" value="640" /></label>
       </div>
 
-      <div class="form-row">
-        <label class="field"><span>First frame</span>
-          <input class="search" id="rdFrom" type="number" min="0" value="0" /></label>
-        <label class="field"><span>Last frame (blank = end)</span>
-          <input class="search" id="rdTo" type="number" min="0" placeholder="end" /></label>
-      </div>
-      <button class="btn tiny ghost" type="button" id="rdUseView">Use the current view as the range</button>
+      <label class="field"><span>Frame range</span>
+        <div class="dualrange" id="rdRange">
+          <div class="dr-track"><div class="dr-fill" id="rdFill"></div></div>
+          <input type="range" id="rdFrom" min="0" max="100" value="0" step="1" aria-label="First frame" />
+          <input type="range" id="rdTo" min="0" max="100" value="100" step="1" aria-label="Last frame" />
+        </div>
+        <div class="dr-readout">
+          <span class="mono" id="rdRangeText">–</span>
+          <span class="spacer"></span>
+          <button class="btn tiny ghost" type="button" id="rdUseView">From current frame</button>
+          <button class="btn tiny ghost" type="button" id="rdFullRange">Full episode</button>
+        </div>
+      </label>
 
       <div class="checkgrid">
         <label class="checkline"><input type="checkbox" id="rdLabels" checked /><span>Camera labels</span></label>

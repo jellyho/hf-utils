@@ -27,6 +27,11 @@
 }
 
 * { box-sizing: border-box; }
+
+/* The UA rule for [hidden] is `display: none` at the lowest priority, so ANY class that
+   sets display (grid/flex/…) silently defeats it. That has bitten this file twice — the
+   modals, then the GIF options row — so enforce it once, here. */
+[hidden] { display: none !important; }
 /* min-height, not height: a sticky child can only stick within its parent's box, so
    body{height:100%} would unstick the app bar as soon as you scrolled past one screen. */
 html, body { margin: 0; min-height: 100%; }
@@ -351,7 +356,31 @@ td.c-check { text-align: center; }
 }
 .cam-checks { padding: 6px 0; }
 .checkgrid { margin: 6px 0 14px; }
-#rdUseView { margin: -4px 0 12px; }
+
+/* Dual-handle range: two native sliders stacked on one track. The inputs ignore
+   pointer events so clicks fall through to whichever thumb is under the cursor. */
+.dualrange { position: relative; height: 28px; margin: 4px 0 2px; }
+.dr-track {
+  position: absolute; top: 12px; left: 0; right: 0; height: 4px;
+  background: var(--border); border-radius: 2px;
+}
+.dr-fill { position: absolute; height: 100%; background: var(--accent-2); border-radius: 2px; }
+.dualrange input[type="range"] {
+  position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: none; pointer-events: none;
+}
+.dualrange input[type="range"]:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.dualrange input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; pointer-events: auto; cursor: grab;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-2); border: 2px solid var(--panel);
+}
+.dualrange input[type="range"]::-moz-range-thumb {
+  pointer-events: auto; cursor: grab;
+  width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--panel);
+  background: var(--accent-2);
+}
+.dr-readout { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 
 /* ---- folder picker ---- */
 .path-row { display: flex; gap: 8px; }

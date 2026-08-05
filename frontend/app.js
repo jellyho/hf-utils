@@ -532,11 +532,24 @@ function renderJobCard(j) {
     const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
     cancel.addEventListener("click", () => cancelJob(j.id));
     head.append(cancel);
+  } else if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
+    // Renders and downloads produce files worth looking at — jump straight to them.
+    const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
+    open.addEventListener("click", () => revealFolder(j.local_dir));
+    head.append(open);
   }
   card.append(head);
   const log = (j.log || []).join("\n");
   if (log) card.append(el("pre", { className: "job-log" }, log));
   return card;
+}
+
+async function revealFolder(path) {
+  try {
+    await api("/api/fs/reveal", { method: "POST", body: { path } });
+  } catch (e) {
+    toast(`Could not open folder: ${e.message}`, "err", 8000);
+  }
 }
 
 async function cancelJob(id) {
