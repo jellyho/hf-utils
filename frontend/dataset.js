@@ -453,10 +453,12 @@ async function openRenderDialog() {
   const cams = $("#rdCameras");
   cams.replaceChildren(...Object.keys(DS.ep.videos).map((key) => {
     const cb = el("input", { type: "checkbox", value: key });
+    cb.addEventListener("change", rdPreviewLoad);   // preview follows the camera choice
     return el("label", { className: "checkline" }, cb, el("span", {}, shortCam(key)));
   }));
   $("#rdGifRow").hidden = $("#rdFormat").value !== "gif";
   $("#renderModal").hidden = false;
+  rdPreviewLoad();
 }
 
 /** Point the two range inputs at this episode's frame count. */
@@ -464,6 +466,54 @@ function setRangeBounds(maxFrame) {
   for (const id of ["#rdFrom", "#rdTo"]) {
     $(id).max = String(Math.max(0, maxFrame));
     $(id).min = "0";
+  }
+}
+
+/* ---- trim previews ---------------------------------------------------- *
+ * Both endpoints are shown as stills from the same shared mp4 the viewer already
+ * streams, so the browser serves them out of the byte ranges it has cached. */
+const rdPreviewCam = () => {
+  if (!DS.ep) return null;
+  const checked = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
+  const keys = Object.keys(DS.ep.videos);
+  return checked.find((k) => keys.includes(k)) || keys[0] || null;
+};
+
+async function rdPreviewLoad() {
+  const key = rdPreviewCam();
+  const els = [$("#rdPrevFrom"), $("#rdPrevTo")];
+  if (!key || !DS.ep) { els.forEach((v) => { v.removeAttribute("src"); }); return; }
+  const w = DS.ep.videos[key];
+  const abs = new URL(dsVideoUrl(key, w.chunk, w.file), location.href).href;
+  await Promise.all(els.map((v) => {
+    if (v.src === abs) return Promise.resolve();
+    v.src = abs;
+    return new Promise((res) => {
+      const done = () => res();
+      v.addEventListener("loadedmetadata", done, { once: true });
+      v.addEventListener("error", done, { once: true });
+      setTimeout(done, 10000);
+    });
+  }));
+  rdPreviewSeek();
+}
+
+/** Park each preview on its endpoint frame. */
+function rdPreviewSeek() {
+  const key = rdPreviewCam();
+  if (!key || !DS.ep) return;
+  const w = DS.ep.videos[key];
+  const fps = DS.fps || 1;
+  const eps = 0.5 / fps;
+  const pairs = [
+    [$("#rdPrevFrom"), Number($("#rdFrom").value), $("#rdPrevFromCap")],
+    [$("#rdPrevTo"), Number($("#rdTo").value), $("#rdPrevToCap")],
+  ];
+  for (const [video, frame, cap] of pairs) {
+    if (!video.src) continue;
+    const t = Math.min(w.from_timestamp + frame / fps, w.to_timestamp - eps);
+    if (Math.abs(video.currentTime - t) > eps) video.currentTime = t;
+    cap.textContent = `f${frame} · ${(frame / fps).toFixed(2)}s`;
   }
 }
 
@@ -482,6 +532,7 @@ function syncRange(pushed) {
   const fps = DS.fps || 1;
   $("#rdRangeText").textContent =
     `${a} – ${b}  (${b - a + 1} frames · ${((b - a + 1) / fps).toFixed(2)}s)`;
+  rdPreviewSeek();
 }
 
 async function startRender() {
@@ -510,7 +561,8 @@ async function startRender() {
   try {
     await api("/api/ds/render", { method: "POST", body });
     $("#renderModal").hidden = true;
-    toast(`Rendering ${episodes.length} episode(s) — see the Transfer tab for progress`, "info", 7000);
+    toast(`Rendering ${episodes.length} episode(s) — see the Jobs tab for progress`, "info", 7000);
+    loadJobs();   // start the badge ticking straight away
   } catch (e) {
     toast(`Render failed to start: ${e.message}`, "err", 10000);
   }

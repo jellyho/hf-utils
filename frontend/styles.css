@@ -72,6 +72,11 @@ body {
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px;
+  border-radius: 999px; background: var(--accent-2); color: #fff;
+  font-size: 11px; font-weight: 700; vertical-align: middle;
+}
 
 /* ---- views ---- */
 .view { padding: 16px 20px 60px; }
@@ -356,6 +361,20 @@ td.c-check { text-align: center; }
 }
 .cam-checks { padding: 6px 0; }
 .checkgrid { margin: 6px 0 14px; }
+
+/* Trim previews: both endpoints on screen at once, so you never drag one handle back
+   and forth just to see what the other one is sitting on. */
+.rd-previews { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 4px; }
+.rd-prev { margin: 0; }
+.rd-prev video {
+  display: block; width: 100%; height: 132px; object-fit: contain;
+  background: #000; border: 1px solid var(--border); border-radius: 8px;
+}
+.rd-prev figcaption {
+  display: flex; gap: 6px; align-items: baseline;
+  margin-top: 4px; font-size: 11px; color: var(--muted);
+}
+.rd-prev figcaption b { color: var(--text); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 
 /* Dual-handle range: two native sliders stacked on one track. The inputs ignore
    pointer events so clicks fall through to whichever thumb is under the cursor. */

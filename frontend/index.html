@@ -24,6 +24,7 @@
     <button class="tab" data-tab="collection">Collections</button>
     <button class="tab" data-tab="transfer">Transfer</button>
     <button class="tab" data-tab="lerobot">LeRobot</button>
+    <button class="tab" data-tab="jobs">Jobs<span class="tab-badge" id="jobsBadge" hidden></span></button>
   </nav>
   </div>
 
@@ -123,12 +124,17 @@
       </div>
     </div>
 
-    <div class="jobs-head">
-      <h3>Jobs</h3>
+  </section>
+
+  <!-- Jobs view (downloads, uploads, renders — anything long-running) -->
+  <section class="view" id="jobsView" hidden>
+    <div class="toolbar">
       <span class="count" id="jobsCount"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost" type="button" id="jobsClear">Clear finished</button>
     </div>
     <div class="jobs" id="jobsList"></div>
-    <div class="empty" id="jobsEmpty">No transfer jobs yet.</div>
+    <div class="empty" id="jobsEmpty">No jobs yet. Downloads, uploads and renders show up here.</div>
   </section>
 
   <!-- Confirm delete modal -->
@@ -268,6 +274,16 @@
       </div>
 
       <label class="field"><span>Frame range</span>
+        <div class="rd-previews">
+          <figure class="rd-prev">
+            <video id="rdPrevFrom" muted playsinline preload="auto"></video>
+            <figcaption><b>start</b> <span class="mono" id="rdPrevFromCap">–</span></figcaption>
+          </figure>
+          <figure class="rd-prev">
+            <video id="rdPrevTo" muted playsinline preload="auto"></video>
+            <figcaption><b>end</b> <span class="mono" id="rdPrevToCap">–</span></figcaption>
+          </figure>
+        </div>
         <div class="dualrange" id="rdRange">
           <div class="dr-track"><div class="dr-fill" id="rdFill"></div></div>
           <input type="range" id="rdFrom" min="0" max="100" value="0" step="1" aria-label="First frame" />

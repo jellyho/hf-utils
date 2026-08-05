@@ -464,13 +464,13 @@ async function switchTab(tab) {
   $("#collectionView").hidden = tab !== "collection";
   $("#transferView").hidden = tab !== "transfer";
   $("#lerobotView").hidden = tab !== "lerobot";
-  stopJobsPolling();
+  $("#jobsView").hidden = tab !== "jobs";
   measureChrome();   // each view has its own toolbar, so the offset changes with the tab
   if (typeof dsOnTab === "function") dsOnTab(tab === "lerobot");
   if (tab === "collection") {
     await loadCollections();
     renderCollections();
-  } else if (tab === "transfer") {
+  } else if (tab === "jobs") {
     loadJobs();
   } else if (isRepo) {
     await loadRepos(tab);
@@ -484,6 +484,8 @@ async function switchTab(tab) {
 let jobsTimer = null;
 function stopJobsPolling() { if (jobsTimer) { clearInterval(jobsTimer); jobsTimer = null; } }
 function ensurePolling(anyRunning) {
+  // Polls regardless of which tab is showing: a render started from the LeRobot tab
+  // still has to drive the tab badge and the completion toast.
   if (anyRunning && !jobsTimer) jobsTimer = setInterval(loadJobs, 1500);
   else if (!anyRunning) stopJobsPolling();
 }
@@ -493,6 +495,21 @@ async function loadJobs() {
     const data = await api("/api/jobs");
     renderJobs(data.jobs);
   } catch { /* ignore transient poll errors */ }
+}
+
+function updateJobsBadge(jobs) {
+  const running = jobs.filter((j) => j.status === "running").length;
+  const badge = $("#jobsBadge");
+  badge.hidden = running === 0;
+  badge.textContent = String(running);
+}
+
+async function clearFinishedJobs() {
+  try {
+    const res = await api("/api/jobs/clear", { method: "POST" });
+    toast(`Cleared ${res.removed} finished job${res.removed === 1 ? "" : "s"}`, "ok");
+    loadJobs();
+  } catch (e) { toast(`Clear failed: ${e.message}`, "err"); }
 }
 
 function fmtElapsed(j) {
@@ -513,6 +530,7 @@ function renderJobs(jobs) {
     state.jobStatus[j.id] = j.status;
   }
   $("#jobsList").replaceChildren(...jobs.map(renderJobCard));
+  updateJobsBadge(jobs);
   ensurePolling(jobs.some((j) => j.status === "running"));
 }
 
@@ -729,7 +747,7 @@ function wire() {
       // Not a repo tab — reloading it through loadRepos() would 422 and then blow up on
       // state.repos["lerobot"]. Re-open the dataset instead.
       if (typeof dsReload === "function") await dsReload();
-    } else if (state.tab === "transfer") {
+    } else if (state.tab === "jobs" || state.tab === "transfer") {
       await loadJobs();
     } else {
       await loadRepos(state.tab, true); renderRepos();
@@ -750,6 +768,7 @@ function wire() {
 
   $("#colSearch").addEventListener("input", renderCollections);
   $("#colDeleteBtn").addEventListener("click", deleteSelectedCollections);
+  $("#jobsClear").addEventListener("click", clearFinishedJobs);
 
   // transfer: download
   $("#dlRepoId").addEventListener("change", () => { autofillDlDir(); detectDownload(); });
@@ -815,6 +834,7 @@ async function init() {
     $("#who").textContent = "not authenticated";
     toast(e.message, "err", 12000);
   }
+  loadJobs();   // a job may still be running from before this page load
   await switchTab("model");
 }
 

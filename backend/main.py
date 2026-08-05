@@ -373,6 +373,12 @@ def jobs_list() -> dict:
     return {"jobs": [j.public(log_tail=8) for j in JOBS.list()]}
 
 
+@app.post("/api/jobs/clear")
+def jobs_clear() -> dict:
+    """Drop every job that has already finished. Running jobs are untouched."""
+    return {"removed": JOBS.clear_finished()}
+
+
 @app.get("/api/jobs/{job_id}")
 def job_get(job_id: str) -> dict:
     job = JOBS.get(job_id)

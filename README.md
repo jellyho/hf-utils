@@ -14,7 +14,8 @@ through the website one repo at a time.
 | **Models** | List all your models, filter/sort, multi-select **bulk delete**, inline **rename**, toggle **public/private**, one-click **download** |
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
-| **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub, as background jobs with live logs + cancel. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
+| **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
+| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
 | **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
 - Shows downloads, likes, last-modified for every repo.
@@ -48,10 +49,10 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   writes a keyframe every ~2 frames.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
 - **Render** episodes to **MP4 or GIF** — pick episodes (`7`, `0,3,5`, `0-9`), which cameras
-  and in what order, speed (0.5×–16×), panel height, and a **frame range** so you can cut a
-  short clip out of one episode ("use the current view as the range" fills it from the
-  scrubber). Overlays are optional: camera labels, an episode/time/frame counter, the task
-  text. MP4s also get the dataset, task, fps and speed written into the file's own metadata.
+  and in what order, speed (0.5×–16×), panel height, and a **frame range** — a two-handle
+  slider with **live previews of the start and end frames**, so you can see exactly where
+  the cut lands. Overlays are optional: camera labels, an episode/time/frame counter, the
+  task text. MP4s also get the dataset, task, fps and speed written into the file's own metadata.
   Renders run as background jobs with a live log, and land in `<dataset>_renders/` next to
   the dataset — never inside it, so they can't ride along on a later upload.
 - **Plots**: pick up to three features (e.g. `action.joint_pos` + `observation.state.joint_pos`)

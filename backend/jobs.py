@@ -166,6 +166,13 @@ class JobManager:
             pass
         return True
 
+    def clear_finished(self) -> int:
+        with self._lock:
+            done = [j.id for j in self._jobs.values() if j.status != "running"]
+            for job_id in done:
+                del self._jobs[job_id]
+        return len(done)
+
     def get(self, job_id: str) -> Optional[Job]:
         return self._jobs.get(job_id)
 
