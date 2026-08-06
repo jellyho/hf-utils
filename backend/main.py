@@ -535,10 +535,61 @@ app.include_router(dataset_router)
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
-def main() -> None:
+# 8000 collides with almost every other dev server; this one is far less contested.
+DEFAULT_PORT = 8765
+PORT_SCAN = 20      # how many ports to try before giving up
+
+
+def _port_free(host: str, port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        # No SO_REUSEADDR: we want to know whether anything is actually listening.
+        try:
+            sock.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def pick_port(host: str, preferred: int) -> int:
+    """The requested port, or the next free one after it."""
+    for candidate in range(preferred, preferred + PORT_SCAN):
+        if _port_free(host, candidate):
+            return candidate
+    raise SystemExit(
+        f"no free port in {preferred}..{preferred + PORT_SCAN - 1}; "
+        f"pass --port or set HFUTIL_PORT")
+
+
+def main(argv: Optional[list[str]] = None) -> None:
+    import argparse
+    import threading
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    parser = argparse.ArgumentParser(prog="hf-util", description="Local GUI for HF repos and LeRobot datasets")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("HFUTIL_PORT") or DEFAULT_PORT),
+                        help=f"port to serve on (default {DEFAULT_PORT}, or $HFUTIL_PORT)")
+    parser.add_argument("--host", default=os.environ.get("HFUTIL_HOST", "127.0.0.1"),
+                        help="interface to bind (default 127.0.0.1)")
+    parser.add_argument("--no-browser", action="store_true", help="don't open a browser window")
+    parser.add_argument("--exact-port", action="store_true",
+                        help="fail instead of moving to the next free port")
+    args = parser.parse_args(argv)
+
+    port = args.port if args.exact_port else pick_port(args.host, args.port)
+    if port != args.port:
+        print(f"port {args.port} is in use — using {port} instead")
+    url = f"http://{args.host}:{port}"
+    print(f"HF Util at {url}")
+
+    if not args.no_browser:
+        # Opened from a timer so the browser doesn't race the server's first bind.
+        import webbrowser
+
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    uvicorn.run(app, host=args.host, port=port)
 
 
 if __name__ == "__main__":

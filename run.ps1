@@ -1,5 +1,7 @@
 # HF Util launcher (Windows PowerShell)
-# Usage:  .\run.ps1
+# Usage:  .\run.ps1                 (default port, opens a browser)
+#         .\run.ps1 --port 9000
+#         .\run.ps1 --no-browser
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -11,6 +13,6 @@ if (-not (Test-Path $venvPy)) {
     & $venvPy -m pip install -r requirements.txt
 }
 
-Write-Host "Starting HF Util at http://127.0.0.1:8000 ..." -ForegroundColor Green
-Start-Process "http://127.0.0.1:8000"
-& $venvPy -m backend.main
+# The server picks the port (moving past one that's taken) and opens the browser itself,
+# so there is no URL to guess here.
+& $venvPy -m backend.main @args

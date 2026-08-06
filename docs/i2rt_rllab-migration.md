@@ -75,8 +75,10 @@ assumptions:
 
 ## What `hf-utils` covers
 
-Run it with `./run.sh` (or `.\run.ps1`), open <http://127.0.0.1:8000>, LeRobot tab, point it
-at a dataset folder — including one straight out of the HF cache.
+Run it with `./run.sh` (or `.\run.ps1`) — it serves on <http://127.0.0.1:8765> and opens a
+browser. LeRobot tab, point it at a dataset folder, including one straight out of the HF
+cache. For a dataset on the lab workstation, `ssh -L 8765:localhost:8765 <host>` and open
+it locally.
 
 - Episode browser; all cameras played back in sync with frame-accurate scrubbing.
 - `action` vs `observation.state` plots, one small chart per dimension, sharing the video's

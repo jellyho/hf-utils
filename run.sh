@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # HF Util launcher (Linux / macOS)
-# Usage:  ./run.sh
+# Usage:  ./run.sh                 (default port, opens a browser)
+#         ./run.sh --port 9000
+#         ./run.sh --no-browser    (e.g. when tunnelling in over ssh)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -12,5 +14,5 @@ if [ ! -x "$PY" ]; then
     "$PY" -m pip install -r requirements.txt
 fi
 
-echo "Starting HF Util at http://127.0.0.1:8000 ..."
-exec "$PY" -m backend.main
+# The server picks the port (moving past one that's taken) and prints the URL.
+exec "$PY" -m backend.main "$@"

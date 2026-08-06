@@ -131,9 +131,24 @@ pip install -r requirements.txt
 python -m backend.main
 ```
 
-Then open <http://127.0.0.1:8000>. The server binds to `127.0.0.1` only — including the
-filesystem-browsing endpoints used by the folder picker, so they're reachable only from
-your own machine.
+It serves on **<http://127.0.0.1:8765>** and opens a browser for you. If that port is
+already taken it moves to the next free one and says so, so two copies can run side by
+side.
+
+```bash
+./run.sh --port 9000        # a specific port
+./run.sh --no-browser       # e.g. when you'll tunnel in over ssh
+HFUTIL_PORT=9000 ./run.sh   # same as --port, via the environment
+./run.sh --exact-port       # fail instead of moving off a busy port
+```
+
+The server binds to `127.0.0.1` only — including the filesystem-browsing endpoints used
+by the folder picker, so they're reachable only from your own machine. To view a dataset
+that lives on a workstation, forward the port rather than binding wider:
+
+```bash
+ssh -L 8765:localhost:8765 my-workstation
+```
 
 ## Project layout
 
