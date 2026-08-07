@@ -28,19 +28,54 @@ def artifact(path) -> None:
 # Download
 # --------------------------------------------------------------------------- #
 
-# How many files a download may reconstruct at once.
+# How many files a transfer may have in flight at once.
 #
-# The Hub's Xet backend does not stream a file straight to disk — it fetches content-defined
-# chunks in parallel and reassembles them through an **in-memory** buffer, one buffer per file
-# in flight. Nothing bounds the total, so peak RSS is (files in flight) x (buffer), and both
-# defaults are generous: snapshot_download runs 8 workers and Xet adds its own concurrency on
-# top. Downloading two ~77 GB model repos was measured at 16 files in flight and 1.6-2.3 GB
-# resident per worker -- for two workers, enough to push a 30 GB machine into swap and leave
-# the recorder to be OOM-killed mid-episode.
-#
-# The memory is a transfer buffer, not a leak: RSS rises and falls as files come and go. So the
-# fix is a ceiling, not a teardown. Four keeps a fat pipe busy at roughly a quarter of the peak.
+# The Hub's Xet backend does not stream a file straight to disk -- it fetches content-defined
+# chunks in parallel and reassembles them through an in-memory buffer, one per file in flight,
+# with nothing bounding the total. snapshot_download's own default of 8 workers came out as 16
+# files in flight, so this halves the multiplier. It does NOT bound the buffer itself; see
+# _use_xet.
 MAX_PARALLEL_FILES = int(os.environ.get("HFUTIL_MAX_PARALLEL_FILES", "4"))
+
+# Below this much free RAM, prefer the streaming download over the fast one (see _use_xet).
+# Xet's buffer is sized off the file, and checkpoint shards here are ~3 GB; leaving several GB
+# of headroom on top of one shard's worth keeps a concurrent job -- a robot recorder holding an
+# episode, a training run -- from being the thing that gets killed.
+LOW_MEMORY_GB = float(os.environ.get("HFUTIL_LOW_MEMORY_GB", "10"))
+
+
+def _available_ram_gb() -> float:
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / 1e6
+    except Exception:
+        pass
+    return float("inf")   # unknown (not Linux): do not second-guess the default
+
+
+def _use_xet() -> bool:
+    """Whether to let the Hub use its Xet backend, given how much RAM is free right now.
+
+    Measured on one 3.08 GB checkpoint shard:
+
+        Xet on    peak RSS 1.88 GB    11.5 MB/s
+        Xet off   peak RSS 0.06 GB     5.5 MB/s
+
+    Xet buffers roughly 60% of a file in memory to reconstruct it, and pays for that with
+    about double the throughput. Neither setting wins outright, and the right answer depends
+    on what else the machine is doing: on an idle box the memory is free and the speed is
+    worth having, while against a live robot recorder that same 2 GB is what pushes the box
+    into swap and gets the recorder OOM-killed mid-episode -- losing an episode to save an
+    hour of download is a bad trade. So choose on free RAM rather than picking a side.
+
+    HFUTIL_USE_XET=0/1 forces it either way.
+    """
+    forced = os.environ.get("HFUTIL_USE_XET")
+    if forced is not None:
+        return forced not in ("0", "false", "no")
+    return _available_ram_gb() >= LOW_MEMORY_GB
 
 
 def _bound_transfer_memory() -> None:
@@ -55,6 +90,14 @@ def _bound_transfer_memory() -> None:
     """
     os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_DOWNLOADS", str(MAX_PARALLEL_FILES))
     os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_INGESTION", str(MAX_PARALLEL_FILES))
+
+    why = ("HFUTIL_USE_XET" if os.environ.get("HFUTIL_USE_XET") is not None
+           else f"{_available_ram_gb():.0f} GB RAM free, threshold {LOW_MEMORY_GB:.0f}")
+    if _use_xet():
+        log(f"[hf] fast transfer via Xet ({why}) — expect a couple of GB resident")
+    else:
+        os.environ["HF_HUB_DISABLE_XET"] = "1"
+        log(f"[hf] streaming transfer ({why}) — about half the speed, but stays under 100 MB")
 
 
 def do_download(spec: dict) -> None:

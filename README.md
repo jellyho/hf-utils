@@ -22,9 +22,13 @@ through the website one repo at a time.
   to tens of GB. Set `HFUTIL_DOWNLOAD_ROOT` to put them somewhere else, or type an absolute path.
 - A cancelled or failed download keeps its partial files, so **Resume** continues instead of
   starting the transfer over.
-- Transfers cap themselves at 4 files in flight (`HFUTIL_MAX_PARALLEL_FILES`). The Hub's Xet
-  backend buffers each in-flight file in memory, and the default concurrency is enough to cost
-  a couple of GB on a large repo.
+- Transfers pick their backend from how much RAM is free. Measured on one 3.08 GB checkpoint
+  shard: the Hub's Xet backend peaks at **1.88 GB resident and 11.5 MB/s**, plain streaming at
+  **0.06 GB and 5.5 MB/s** — Xet buffers ~60% of a file in memory to reconstruct it, and buys
+  about double the speed with it. Neither wins outright, so below 10 GB free
+  (`HFUTIL_LOW_MEMORY_GB`) transfers stream instead, and the job log says which it chose and
+  why. `HFUTIL_USE_XET=0`/`1` forces it. Files in flight are capped at 4
+  (`HFUTIL_MAX_PARALLEL_FILES`) either way.
 - Shows downloads, likes, last-modified for every repo.
 - Bulk delete requires typing `DELETE` in a confirmation dialog (deletes are permanent).
 - Auth uses your existing Hugging Face login — **no token is stored in this repo**.
