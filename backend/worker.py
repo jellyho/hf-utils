@@ -88,6 +88,29 @@ def do_download(spec: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Upload
 # --------------------------------------------------------------------------- #
+
+# Above either of these, an upload is worth doing the resumable way. Both thresholds are
+# well under what this tool is normally pointed at (a LeRobot dataset or a checkpoint repo
+# runs to tens of GB) and well above a stray config folder, where several commits for a few
+# megabytes would be worse than just sending it.
+LARGE_UPLOAD_BYTES = 5_000_000_000
+LARGE_UPLOAD_FILES = 200
+
+
+def _folder_size(path: str) -> tuple[int, int]:
+    """(file count, total bytes), skipping the caches the Hub client keeps inside the folder."""
+    n = total = 0
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d != ".cache"]
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+                n += 1
+            except OSError:
+                pass
+    return n, total
+
+
 def do_upload(spec: dict) -> None:
     repo_id = spec["repo_id"]
     repo_type = spec["repo_type"]
@@ -112,7 +135,26 @@ def do_upload(spec: dict) -> None:
         api = HfApi()
         log(f"[hf] create_repo '{repo_id}' ({repo_type}, private={private}, exist_ok)")
         api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
-        log(f"[hf] upload_folder {local_dir} -> '{repo_id}'")
+
+        n_files, n_bytes = _folder_size(local_dir)
+        if n_bytes >= LARGE_UPLOAD_BYTES or n_files >= LARGE_UPLOAD_FILES:
+            # upload_large_folder keeps its progress in <folder>/.cache/.huggingface, so an
+            # interrupted upload picks up where it stopped instead of re-hashing and
+            # re-sending everything. The cost is that it lands as several commits rather
+            # than one, which is why a small folder still takes the plain path.
+            log(f"[hf] upload_large_folder {local_dir} -> '{repo_id}' "
+                f"({n_files} files, {n_bytes / 1e9:.1f} GB, {MAX_PARALLEL_FILES} workers)")
+            api.upload_large_folder(
+                repo_id=repo_id,
+                folder_path=local_dir,
+                repo_type=repo_type,
+                num_workers=MAX_PARALLEL_FILES,
+            )
+            log(f"[hf] uploaded -> {api.endpoint}/{repo_id}")
+            return
+
+        log(f"[hf] upload_folder {local_dir} -> '{repo_id}' "
+            f"({n_files} files, {n_bytes / 1e9:.1f} GB)")
         url = api.upload_folder(
             folder_path=local_dir, repo_id=repo_id, repo_type=repo_type
         )
