@@ -552,11 +552,21 @@ function renderJobCard(j) {
     const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
     cancel.addEventListener("click", () => cancelJob(j.id));
     head.append(cancel);
-  } else if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
-    // Renders and downloads produce files worth looking at — jump straight to them.
-    const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
-    open.addEventListener("click", () => revealFolder(j.local_dir));
-    head.append(open);
+  } else {
+    // A cancelled or failed download still has its partial files on disk, so running it
+    // again continues from where it stopped instead of re-fetching what it already has.
+    if (j.status !== "success") {
+      const resume = el("button", { className: "btn tiny" },
+                        j.kind === "download" ? "↻ Resume" : "↻ Retry");
+      resume.addEventListener("click", () => resumeJob(j.id));
+      head.append(resume);
+    }
+    if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
+      // Renders and downloads produce files worth looking at — jump straight to them.
+      const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
+      open.addEventListener("click", () => revealFolder(j.local_dir));
+      head.append(open);
+    }
   }
   card.append(head);
 
@@ -620,6 +630,14 @@ async function cancelJob(id) {
   catch (e) { toast(`Cancel failed: ${e.message}`, "err"); }
 }
 
+async function resumeJob(id) {
+  try {
+    await api(`/api/jobs/${id}/resume`, { method: "POST" });
+    toast("Resumed — already-downloaded files are kept");
+    loadJobs();
+  } catch (e) { toast(`Resume failed: ${e.message}`, "err"); }
+}
+
 async function detectDownload() {
   const id = $("#dlRepoId").value.trim();
   const type = $("#dlRepoType").value;
@@ -634,17 +652,27 @@ async function detectDownload() {
   } catch { hint.textContent = ""; }
 }
 
+// Where downloads land, as the server resolves it. Filled in from /api/whoami at start-up;
+// until then a relative path still works, because the server anchors it to the same root.
+let DOWNLOAD_ROOT = "";
+
+function defaultDlDir(name) {
+  if (!DOWNLOAD_ROOT) return `downloads/${name}`;
+  const sep = DOWNLOAD_ROOT.includes("\\") ? "\\" : "/";
+  return `${DOWNLOAD_ROOT.replace(/[\\/]+$/, "")}${sep}${name}`;
+}
+
 function autofillDlDir() {
   const id = $("#dlRepoId").value.trim();
   const dir = $("#dlLocalDir");
-  if (id.includes("/") && !dir.value.trim()) dir.value = `downloads/${id.split("/").pop()}`;
+  if (id.includes("/") && !dir.value.trim()) dir.value = defaultDlDir(id.split("/").pop());
 }
 
 async function prefillDownload(r, type) {
   await switchTab("transfer");
   $("#dlRepoId").value = r.id;
   $("#dlRepoType").value = type;
-  $("#dlLocalDir").value = `downloads/${r.name}`;
+  $("#dlLocalDir").value = defaultDlDir(r.name);
   detectDownload();
   $("#dlRepoId").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -652,7 +680,7 @@ async function prefillDownload(r, type) {
 async function startDownload() {
   const repo_id = $("#dlRepoId").value.trim();
   if (!repo_id.includes("/")) return toast("Enter a full repo id like user/name", "err");
-  const local_dir = $("#dlLocalDir").value.trim() || `downloads/${repo_id.split("/").pop()}`;
+  const local_dir = $("#dlLocalDir").value.trim() || defaultDlDir(repo_id.split("/").pop());
   try {
     await api("/api/transfer/download", {
       method: "POST",
@@ -875,6 +903,10 @@ async function init() {
   try {
     const me = await api("/api/whoami");
     $("#who").textContent = `${me.fullname || me.name} · @${me.name}`;
+    if (me.download_root) {
+      DOWNLOAD_ROOT = me.download_root;
+      $("#dlLocalDir").placeholder = defaultDlDir("my-dataset");
+    }
   } catch (e) {
     $("#who").textContent = "not authenticated";
     toast(e.message, "err", 12000);

@@ -27,11 +27,42 @@ def artifact(path) -> None:
 # --------------------------------------------------------------------------- #
 # Download
 # --------------------------------------------------------------------------- #
+
+# How many files a download may reconstruct at once.
+#
+# The Hub's Xet backend does not stream a file straight to disk — it fetches content-defined
+# chunks in parallel and reassembles them through an **in-memory** buffer, one buffer per file
+# in flight. Nothing bounds the total, so peak RSS is (files in flight) x (buffer), and both
+# defaults are generous: snapshot_download runs 8 workers and Xet adds its own concurrency on
+# top. Downloading two ~77 GB model repos was measured at 16 files in flight and 1.6-2.3 GB
+# resident per worker -- for two workers, enough to push a 30 GB machine into swap and leave
+# the recorder to be OOM-killed mid-episode.
+#
+# The memory is a transfer buffer, not a leak: RSS rises and falls as files come and go. So the
+# fix is a ceiling, not a teardown. Four keeps a fat pipe busy at roughly a quarter of the peak.
+MAX_PARALLEL_FILES = int(os.environ.get("HFUTIL_MAX_PARALLEL_FILES", "4"))
+
+
+def _bound_transfer_memory() -> None:
+    """Cap the Xet transfer buffers before huggingface_hub is imported.
+
+    Uploads buffer the same way downloads do -- ingestion chunks each file in memory before
+    packing it into a xorb -- so both directions get the same ceiling.
+
+    Xet reads its configuration from the environment once, inside the Rust extension, so this
+    has to happen before the first import. Anything already set in the environment wins -- a
+    caller who deliberately tuned this keeps their value.
+    """
+    os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_DOWNLOADS", str(MAX_PARALLEL_FILES))
+    os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_INGESTION", str(MAX_PARALLEL_FILES))
+
+
 def do_download(spec: dict) -> None:
     repo_id = spec["repo_id"]
     repo_type = spec["repo_type"]
     local_dir = spec["local_dir"]
     Path(local_dir).mkdir(parents=True, exist_ok=True)
+    _bound_transfer_memory()
 
     if spec["mode"] == "lerobot":
         log(f"[lerobot] downloading dataset '{repo_id}' -> {local_dir}")
@@ -46,7 +77,10 @@ def do_download(spec: dict) -> None:
         from huggingface_hub import snapshot_download
 
         path = snapshot_download(
-            repo_id=repo_id, repo_type=repo_type, local_dir=local_dir
+            repo_id=repo_id,
+            repo_type=repo_type,
+            local_dir=local_dir,
+            max_workers=MAX_PARALLEL_FILES,
         )
         log(f"[hf] done -> {path}")
 
@@ -62,6 +96,7 @@ def do_upload(spec: dict) -> None:
 
     if not Path(local_dir).is_dir():
         raise FileNotFoundError(f"Local folder does not exist: {local_dir}")
+    _bound_transfer_memory()
 
     if spec["mode"] == "lerobot":
         log(f"[lerobot] loading local dataset at {local_dir}")

@@ -15,9 +15,16 @@ through the website one repo at a time.
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
-| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
+| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, **Resume** for anything that stopped part-way, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
 | **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
+- Downloads land in `~/hf_utils_downloads` — outside the checkout, since a model repo can run
+  to tens of GB. Set `HFUTIL_DOWNLOAD_ROOT` to put them somewhere else, or type an absolute path.
+- A cancelled or failed download keeps its partial files, so **Resume** continues instead of
+  starting the transfer over.
+- Transfers cap themselves at 4 files in flight (`HFUTIL_MAX_PARALLEL_FILES`). The Hub's Xet
+  backend buffers each in-flight file in memory, and the default concurrency is enough to cost
+  a couple of GB on a large repo.
 - Shows downloads, likes, last-modified for every repo.
 - Bulk delete requires typing `DELETE` in a confirmation dialog (deletes are permanent).
 - Auth uses your existing Hugging Face login — **no token is stored in this repo**.

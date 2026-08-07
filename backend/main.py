@@ -32,6 +32,13 @@ from .routes_dataset import router as dataset_router
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
+# Where a relative local_dir lands. Deliberately *outside* the checkout: model repos run to
+# tens of GB apiece, and burying them in the source tree makes every `git status` walk them,
+# puts them in the blast radius of a `git clean`, and quietly hides them from disk accounting.
+DOWNLOAD_ROOT = Path(
+    os.environ.get("HFUTIL_DOWNLOAD_ROOT", Path.home() / "hf_utils_downloads")
+).expanduser()
+
 RepoType = Literal["model", "dataset"]
 # huggingface_hub uses "models"/"datasets" in URLs but "model"/"dataset" in the API.
 _URL_SEGMENT = {"model": "", "dataset": "datasets/"}
@@ -139,6 +146,9 @@ def whoami() -> dict:
         "email": me.get("email"),
         "type": me.get("type"),
         "avatar": me.get("avatarUrl"),
+        # Where a relative local_dir lands, so the UI can show the real destination
+        # instead of a bare "downloads/x" whose meaning depends on the server's cwd.
+        "download_root": str(DOWNLOAD_ROOT),
     }
 
 
@@ -305,7 +315,7 @@ def remove_collection_item(body: RemoveCollectionItemBody) -> dict:
 def _resolve_dir(p: str) -> str:
     path = Path(p).expanduser()
     if not path.is_absolute():
-        path = PROJECT_ROOT / path
+        path = DOWNLOAD_ROOT / path
     return str(path)
 
 
@@ -394,6 +404,15 @@ def job_cancel(job_id: str) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/jobs/{job_id}/resume")
+def job_resume(job_id: str) -> dict:
+    """Run a finished job again. Downloads continue from their partial files."""
+    job = JOBS.restart(job_id)
+    if job is None:
+        raise HTTPException(status_code=409, detail="unknown job, or it is still running")
+    return {"ok": True, "id": job.id}
+
+
 # --------------------------------------------------------------------------- #
 # Local filesystem browsing (for the folder picker) — 127.0.0.1 only
 # --------------------------------------------------------------------------- #
@@ -427,7 +446,7 @@ def fs_list(path: str = "") -> dict:
     try:
         base = Path(path).expanduser()
         if not base.is_absolute():
-            base = PROJECT_ROOT / base
+            base = DOWNLOAD_ROOT / base
         base = base.resolve(strict=False)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"bad path: {exc}")
@@ -512,7 +531,7 @@ def fs_mkdir(body: MkdirBody) -> dict:
         raise HTTPException(status_code=400, detail="invalid folder name")
     base = Path(body.path).expanduser()
     if not base.is_absolute():
-        base = PROJECT_ROOT / base
+        base = DOWNLOAD_ROOT / base
     target = base / name
     try:
         target.mkdir(parents=False, exist_ok=True)
