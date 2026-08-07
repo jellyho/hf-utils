@@ -15,9 +15,20 @@ through the website one repo at a time.
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
-| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
+| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, **Resume** for anything that stopped part-way, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
 | **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
+- Downloads land in `~/hf_utils_downloads` — outside the checkout, since a model repo can run
+  to tens of GB. Set `HFUTIL_DOWNLOAD_ROOT` to put them somewhere else, or type an absolute path.
+- A cancelled or failed download keeps its partial files, so **Resume** continues instead of
+  starting the transfer over.
+- Transfers pick their backend from how much RAM is free. Measured on one 3.08 GB checkpoint
+  shard: the Hub's Xet backend peaks at **1.88 GB resident and 11.5 MB/s**, plain streaming at
+  **0.06 GB and 5.5 MB/s** — Xet buffers ~60% of a file in memory to reconstruct it, and buys
+  about double the speed with it. Neither wins outright, so below 10 GB free
+  (`HFUTIL_LOW_MEMORY_GB`) transfers stream instead, and the job log says which it chose and
+  why. `HFUTIL_USE_XET=0`/`1` forces it. Files in flight are capped at 4
+  (`HFUTIL_MAX_PARALLEL_FILES`) either way.
 - Shows downloads, likes, last-modified for every repo.
 - Bulk delete requires typing `DELETE` in a confirmation dialog (deletes are permanent).
 - Auth uses your existing Hugging Face login — **no token is stored in this repo**.

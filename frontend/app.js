@@ -552,11 +552,21 @@ function renderJobCard(j) {
     const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
     cancel.addEventListener("click", () => cancelJob(j.id));
     head.append(cancel);
-  } else if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
-    // Renders and downloads produce files worth looking at — jump straight to them.
-    const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
-    open.addEventListener("click", () => revealFolder(j.local_dir));
-    head.append(open);
+  } else {
+    // A cancelled or failed download still has its partial files on disk, so running it
+    // again continues from where it stopped instead of re-fetching what it already has.
+    if (j.status !== "success") {
+      const resume = el("button", { className: "btn tiny" },
+                        j.kind === "download" ? "↻ Resume" : "↻ Retry");
+      resume.addEventListener("click", () => resumeJob(j.id));
+      head.append(resume);
+    }
+    if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
+      // Renders and downloads produce files worth looking at — jump straight to them.
+      const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
+      open.addEventListener("click", () => revealFolder(j.local_dir));
+      head.append(open);
+    }
   }
   card.append(head);
 
@@ -620,6 +630,14 @@ async function cancelJob(id) {
   catch (e) { toast(`Cancel failed: ${e.message}`, "err"); }
 }
 
+async function resumeJob(id) {
+  try {
+    await api(`/api/jobs/${id}/resume`, { method: "POST" });
+    toast("Resumed — already-downloaded files are kept");
+    loadJobs();
+  } catch (e) { toast(`Resume failed: ${e.message}`, "err"); }
+}
+
 async function detectDownload() {
   const id = $("#dlRepoId").value.trim();
   const type = $("#dlRepoType").value;
@@ -634,17 +652,38 @@ async function detectDownload() {
   } catch { hint.textContent = ""; }
 }
 
-function autofillDlDir() {
+// Where downloads land, as the server resolves it. Filled in from /api/whoami at start-up;
+// until then a relative path still works, because the server anchors it to the same root.
+let DOWNLOAD_ROOT = "";
+
+// The form asks only for the parent — the repo's own name is always the folder inside it, so
+// there is no way to typo it, and picking a parent once is enough for every later download.
+function dlParent() {
+  return $("#dlParentDir").value.trim() || DOWNLOAD_ROOT;
+}
+
+function joinPath(parent, name) {
+  const sep = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
+  return `${parent.replace(/[\\/]+$/, "")}${sep}${name}`;
+}
+
+function dlRepoName() {
   const id = $("#dlRepoId").value.trim();
-  const dir = $("#dlLocalDir");
-  if (id.includes("/") && !dir.value.trim()) dir.value = `downloads/${id.split("/").pop()}`;
+  return id.includes("/") ? id.split("/").pop() : "";
+}
+
+/** Spell out the folder the download will actually create, so the parent is unambiguous. */
+function showDlDest() {
+  const name = dlRepoName();
+  const parent = dlParent();
+  $("#dlDest").textContent = name && parent ? `→ ${joinPath(parent, name)}` : "";
 }
 
 async function prefillDownload(r, type) {
   await switchTab("transfer");
   $("#dlRepoId").value = r.id;
   $("#dlRepoType").value = type;
-  $("#dlLocalDir").value = `downloads/${r.name}`;
+  showDlDest();
   detectDownload();
   $("#dlRepoId").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -652,7 +691,9 @@ async function prefillDownload(r, type) {
 async function startDownload() {
   const repo_id = $("#dlRepoId").value.trim();
   if (!repo_id.includes("/")) return toast("Enter a full repo id like user/name", "err");
-  const local_dir = $("#dlLocalDir").value.trim() || `downloads/${repo_id.split("/").pop()}`;
+  const parent = dlParent();
+  if (!parent) return toast("Choose a folder to download into", "err");
+  const local_dir = joinPath(parent, repo_id.split("/").pop());
   try {
     await api("/api/transfer/download", {
       method: "POST",
@@ -816,7 +857,10 @@ function wire() {
   $("#jobsClear").addEventListener("click", clearFinishedJobs);
 
   // transfer: download
-  $("#dlRepoId").addEventListener("change", () => { autofillDlDir(); detectDownload(); });
+  $("#dlRepoId").addEventListener("input", showDlDest);
+  $("#dlRepoId").addEventListener("change", () => { showDlDest(); detectDownload(); });
+  // The folder picker commits its choice by dispatching "change" on the input.
+  for (const ev of ["input", "change"]) $("#dlParentDir").addEventListener(ev, showDlDest);
   $("#dlRepoType").addEventListener("change", detectDownload);
   $("#dlStart").addEventListener("click", startDownload);
   // transfer: upload
@@ -824,7 +868,8 @@ function wire() {
   $("#upStart").addEventListener("click", startUpload);
 
   // folder picker
-  $("#dlBrowse").addEventListener("click", () => openFolderPicker("dlLocalDir", "Choose download folder"));
+  $("#dlBrowse").addEventListener("click", () =>
+    openFolderPicker("dlParentDir", "Choose the folder to download into"));
   $("#upBrowse").addEventListener("click", () => openFolderPicker("upLocalDir", "Choose folder to upload"));
   $("#fsRoot").addEventListener("click", () => fsNavigate(fsPicker.sep === "/" ? "/" : ""));
   $("#fsHome").addEventListener("click", () => fsNavigate(fsPicker.home || "~"));
@@ -872,6 +917,15 @@ function watchChrome() {
 async function init() {
   wire();
   watchChrome();
+  try {
+    const cfg = await api("/api/config");
+    DOWNLOAD_ROOT = cfg.download_root || "";
+    $("#dlParentDir").placeholder = DOWNLOAD_ROOT;
+    if (!$("#dlParentDir").value.trim()) $("#dlParentDir").value = DOWNLOAD_ROOT;
+    showDlDest();
+  } catch (e) {
+    toast(`Could not read server config: ${e.message}`, "err", 8000);
+  }
   try {
     const me = await api("/api/whoami");
     $("#who").textContent = `${me.fullname || me.name} · @${me.name}`;

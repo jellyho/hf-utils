@@ -27,11 +27,85 @@ def artifact(path) -> None:
 # --------------------------------------------------------------------------- #
 # Download
 # --------------------------------------------------------------------------- #
+
+# How many files a transfer may have in flight at once.
+#
+# The Hub's Xet backend does not stream a file straight to disk -- it fetches content-defined
+# chunks in parallel and reassembles them through an in-memory buffer, one per file in flight,
+# with nothing bounding the total. snapshot_download's own default of 8 workers came out as 16
+# files in flight, so this halves the multiplier. It does NOT bound the buffer itself; see
+# _use_xet.
+MAX_PARALLEL_FILES = int(os.environ.get("HFUTIL_MAX_PARALLEL_FILES", "4"))
+
+# Below this much free RAM, prefer the streaming download over the fast one (see _use_xet).
+# Xet's buffer is sized off the file, and checkpoint shards here are ~3 GB; leaving several GB
+# of headroom on top of one shard's worth keeps a concurrent job -- a robot recorder holding an
+# episode, a training run -- from being the thing that gets killed.
+LOW_MEMORY_GB = float(os.environ.get("HFUTIL_LOW_MEMORY_GB", "10"))
+
+
+def _available_ram_gb() -> float:
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / 1e6
+    except Exception:
+        pass
+    return float("inf")   # unknown (not Linux): do not second-guess the default
+
+
+def _use_xet() -> bool:
+    """Whether to let the Hub use its Xet backend, given how much RAM is free right now.
+
+    Measured on one 3.08 GB checkpoint shard:
+
+        Xet on    peak RSS 1.88 GB    11.5 MB/s
+        Xet off   peak RSS 0.06 GB     5.5 MB/s
+
+    Xet buffers roughly 60% of a file in memory to reconstruct it, and pays for that with
+    about double the throughput. Neither setting wins outright, and the right answer depends
+    on what else the machine is doing: on an idle box the memory is free and the speed is
+    worth having, while against a live robot recorder that same 2 GB is what pushes the box
+    into swap and gets the recorder OOM-killed mid-episode -- losing an episode to save an
+    hour of download is a bad trade. So choose on free RAM rather than picking a side.
+
+    HFUTIL_USE_XET=0/1 forces it either way.
+    """
+    forced = os.environ.get("HFUTIL_USE_XET")
+    if forced is not None:
+        return forced not in ("0", "false", "no")
+    return _available_ram_gb() >= LOW_MEMORY_GB
+
+
+def _bound_transfer_memory() -> None:
+    """Cap the Xet transfer buffers before huggingface_hub is imported.
+
+    Uploads buffer the same way downloads do -- ingestion chunks each file in memory before
+    packing it into a xorb -- so both directions get the same ceiling.
+
+    Xet reads its configuration from the environment once, inside the Rust extension, so this
+    has to happen before the first import. Anything already set in the environment wins -- a
+    caller who deliberately tuned this keeps their value.
+    """
+    os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_DOWNLOADS", str(MAX_PARALLEL_FILES))
+    os.environ.setdefault("HF_XET_DATA_MAX_CONCURRENT_FILE_INGESTION", str(MAX_PARALLEL_FILES))
+
+    why = ("HFUTIL_USE_XET" if os.environ.get("HFUTIL_USE_XET") is not None
+           else f"{_available_ram_gb():.0f} GB RAM free, threshold {LOW_MEMORY_GB:.0f}")
+    if _use_xet():
+        log(f"[hf] fast transfer via Xet ({why}) — expect a couple of GB resident")
+    else:
+        os.environ["HF_HUB_DISABLE_XET"] = "1"
+        log(f"[hf] streaming transfer ({why}) — about half the speed, but stays under 100 MB")
+
+
 def do_download(spec: dict) -> None:
     repo_id = spec["repo_id"]
     repo_type = spec["repo_type"]
     local_dir = spec["local_dir"]
     Path(local_dir).mkdir(parents=True, exist_ok=True)
+    _bound_transfer_memory()
 
     if spec["mode"] == "lerobot":
         log(f"[lerobot] downloading dataset '{repo_id}' -> {local_dir}")
@@ -46,7 +120,10 @@ def do_download(spec: dict) -> None:
         from huggingface_hub import snapshot_download
 
         path = snapshot_download(
-            repo_id=repo_id, repo_type=repo_type, local_dir=local_dir
+            repo_id=repo_id,
+            repo_type=repo_type,
+            local_dir=local_dir,
+            max_workers=MAX_PARALLEL_FILES,
         )
         log(f"[hf] done -> {path}")
 
@@ -54,6 +131,29 @@ def do_download(spec: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Upload
 # --------------------------------------------------------------------------- #
+
+# Above either of these, an upload is worth doing the resumable way. Both thresholds are
+# well under what this tool is normally pointed at (a LeRobot dataset or a checkpoint repo
+# runs to tens of GB) and well above a stray config folder, where several commits for a few
+# megabytes would be worse than just sending it.
+LARGE_UPLOAD_BYTES = 5_000_000_000
+LARGE_UPLOAD_FILES = 200
+
+
+def _folder_size(path: str) -> tuple[int, int]:
+    """(file count, total bytes), skipping the caches the Hub client keeps inside the folder."""
+    n = total = 0
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d != ".cache"]
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+                n += 1
+            except OSError:
+                pass
+    return n, total
+
+
 def do_upload(spec: dict) -> None:
     repo_id = spec["repo_id"]
     repo_type = spec["repo_type"]
@@ -62,6 +162,7 @@ def do_upload(spec: dict) -> None:
 
     if not Path(local_dir).is_dir():
         raise FileNotFoundError(f"Local folder does not exist: {local_dir}")
+    _bound_transfer_memory()
 
     if spec["mode"] == "lerobot":
         log(f"[lerobot] loading local dataset at {local_dir}")
@@ -77,7 +178,26 @@ def do_upload(spec: dict) -> None:
         api = HfApi()
         log(f"[hf] create_repo '{repo_id}' ({repo_type}, private={private}, exist_ok)")
         api.create_repo(repo_id, repo_type=repo_type, private=private, exist_ok=True)
-        log(f"[hf] upload_folder {local_dir} -> '{repo_id}'")
+
+        n_files, n_bytes = _folder_size(local_dir)
+        if n_bytes >= LARGE_UPLOAD_BYTES or n_files >= LARGE_UPLOAD_FILES:
+            # upload_large_folder keeps its progress in <folder>/.cache/.huggingface, so an
+            # interrupted upload picks up where it stopped instead of re-hashing and
+            # re-sending everything. The cost is that it lands as several commits rather
+            # than one, which is why a small folder still takes the plain path.
+            log(f"[hf] upload_large_folder {local_dir} -> '{repo_id}' "
+                f"({n_files} files, {n_bytes / 1e9:.1f} GB, {MAX_PARALLEL_FILES} workers)")
+            api.upload_large_folder(
+                repo_id=repo_id,
+                folder_path=local_dir,
+                repo_type=repo_type,
+                num_workers=MAX_PARALLEL_FILES,
+            )
+            log(f"[hf] uploaded -> {api.endpoint}/{repo_id}")
+            return
+
+        log(f"[hf] upload_folder {local_dir} -> '{repo_id}' "
+            f"({n_files} files, {n_bytes / 1e9:.1f} GB)")
         url = api.upload_folder(
             folder_path=local_dir, repo_id=repo_id, repo_type=repo_type
         )

@@ -179,6 +179,25 @@ class JobManager:
             pass
         return True
 
+    def restart(self, job_id: str) -> Optional[Job]:
+        """Run a finished job's spec again, as a new job.
+
+        For a download this resumes rather than restarts: huggingface_hub keeps each
+        partial file as ``<local_dir>/.cache/huggingface/download/*.incomplete`` and
+        picks it up where it stopped, so a cancelled 70 GB pull continues instead of
+        starting over. Nothing here has to know that -- re-running the same spec is
+        enough, which is also why it is safe for the other job kinds.
+
+        Returns the new job, or None if the id is unknown or that job is still running.
+        """
+        old = self._jobs.get(job_id)
+        if old is None or old.status == "running":
+            return None
+        return self.start(
+            kind=old.kind, mode=old.mode, repo_id=old.repo_id, repo_type=old.repo_type,
+            local_dir=old.local_dir, private=old.private, label=old.label, **old.spec,
+        )
+
     def clear_finished(self) -> int:
         with self._lock:
             done = [j.id for j in self._jobs.values() if j.status != "running"]
