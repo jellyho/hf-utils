@@ -91,11 +91,12 @@
             <option value="dataset">dataset</option>
             <option value="model">model</option>
           </select></label>
-        <label class="field"><span>Local folder (relative paths land in the repo dir)</span>
+        <label class="field"><span>Download into</span>
           <div class="path-row">
-            <input id="dlLocalDir" class="search" placeholder="downloads/my-dataset" autocomplete="off" />
+            <input id="dlParentDir" class="search" autocomplete="off" />
             <button class="btn" type="button" id="dlBrowse">Browse…</button>
-          </div></label>
+          </div>
+          <span class="hint" id="dlDest"></span></label>
         <label class="checkline">
           <input type="checkbox" id="dlLerobot" /><span>Use LeRobot API</span>
           <span class="hint" id="dlDetect"></span></label>

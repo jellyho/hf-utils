@@ -146,10 +146,19 @@ def whoami() -> dict:
         "email": me.get("email"),
         "type": me.get("type"),
         "avatar": me.get("avatarUrl"),
-        # Where a relative local_dir lands, so the UI can show the real destination
-        # instead of a bare "downloads/x" whose meaning depends on the server's cwd.
-        "download_root": str(DOWNLOAD_ROOT),
     }
+
+
+@app.get("/api/config")
+def config() -> dict:
+    """Server-side settings the UI needs. Deliberately makes no Hub call.
+
+    The download root used to ride along on /api/whoami. That tied it to being logged in: an
+    expired token or an unreachable Hub left the UI with no root at all, and a download form
+    whose parent folder was the empty string -- which joins to the filesystem root. Where
+    files land must not depend on authentication.
+    """
+    return {"download_root": str(DOWNLOAD_ROOT)}
 
 
 # --------------------------------------------------------------------------- #

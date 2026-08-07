@@ -656,23 +656,34 @@ async function detectDownload() {
 // until then a relative path still works, because the server anchors it to the same root.
 let DOWNLOAD_ROOT = "";
 
-function defaultDlDir(name) {
-  if (!DOWNLOAD_ROOT) return `downloads/${name}`;
-  const sep = DOWNLOAD_ROOT.includes("\\") ? "\\" : "/";
-  return `${DOWNLOAD_ROOT.replace(/[\\/]+$/, "")}${sep}${name}`;
+// The form asks only for the parent — the repo's own name is always the folder inside it, so
+// there is no way to typo it, and picking a parent once is enough for every later download.
+function dlParent() {
+  return $("#dlParentDir").value.trim() || DOWNLOAD_ROOT;
 }
 
-function autofillDlDir() {
+function joinPath(parent, name) {
+  const sep = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
+  return `${parent.replace(/[\\/]+$/, "")}${sep}${name}`;
+}
+
+function dlRepoName() {
   const id = $("#dlRepoId").value.trim();
-  const dir = $("#dlLocalDir");
-  if (id.includes("/") && !dir.value.trim()) dir.value = defaultDlDir(id.split("/").pop());
+  return id.includes("/") ? id.split("/").pop() : "";
+}
+
+/** Spell out the folder the download will actually create, so the parent is unambiguous. */
+function showDlDest() {
+  const name = dlRepoName();
+  const parent = dlParent();
+  $("#dlDest").textContent = name && parent ? `→ ${joinPath(parent, name)}` : "";
 }
 
 async function prefillDownload(r, type) {
   await switchTab("transfer");
   $("#dlRepoId").value = r.id;
   $("#dlRepoType").value = type;
-  $("#dlLocalDir").value = defaultDlDir(r.name);
+  showDlDest();
   detectDownload();
   $("#dlRepoId").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -680,7 +691,9 @@ async function prefillDownload(r, type) {
 async function startDownload() {
   const repo_id = $("#dlRepoId").value.trim();
   if (!repo_id.includes("/")) return toast("Enter a full repo id like user/name", "err");
-  const local_dir = $("#dlLocalDir").value.trim() || defaultDlDir(repo_id.split("/").pop());
+  const parent = dlParent();
+  if (!parent) return toast("Choose a folder to download into", "err");
+  const local_dir = joinPath(parent, repo_id.split("/").pop());
   try {
     await api("/api/transfer/download", {
       method: "POST",
@@ -844,7 +857,10 @@ function wire() {
   $("#jobsClear").addEventListener("click", clearFinishedJobs);
 
   // transfer: download
-  $("#dlRepoId").addEventListener("change", () => { autofillDlDir(); detectDownload(); });
+  $("#dlRepoId").addEventListener("input", showDlDest);
+  $("#dlRepoId").addEventListener("change", () => { showDlDest(); detectDownload(); });
+  // The folder picker commits its choice by dispatching "change" on the input.
+  for (const ev of ["input", "change"]) $("#dlParentDir").addEventListener(ev, showDlDest);
   $("#dlRepoType").addEventListener("change", detectDownload);
   $("#dlStart").addEventListener("click", startDownload);
   // transfer: upload
@@ -852,7 +868,8 @@ function wire() {
   $("#upStart").addEventListener("click", startUpload);
 
   // folder picker
-  $("#dlBrowse").addEventListener("click", () => openFolderPicker("dlLocalDir", "Choose download folder"));
+  $("#dlBrowse").addEventListener("click", () =>
+    openFolderPicker("dlParentDir", "Choose the folder to download into"));
   $("#upBrowse").addEventListener("click", () => openFolderPicker("upLocalDir", "Choose folder to upload"));
   $("#fsRoot").addEventListener("click", () => fsNavigate(fsPicker.sep === "/" ? "/" : ""));
   $("#fsHome").addEventListener("click", () => fsNavigate(fsPicker.home || "~"));
@@ -901,12 +918,17 @@ async function init() {
   wire();
   watchChrome();
   try {
+    const cfg = await api("/api/config");
+    DOWNLOAD_ROOT = cfg.download_root || "";
+    $("#dlParentDir").placeholder = DOWNLOAD_ROOT;
+    if (!$("#dlParentDir").value.trim()) $("#dlParentDir").value = DOWNLOAD_ROOT;
+    showDlDest();
+  } catch (e) {
+    toast(`Could not read server config: ${e.message}`, "err", 8000);
+  }
+  try {
     const me = await api("/api/whoami");
     $("#who").textContent = `${me.fullname || me.name} · @${me.name}`;
-    if (me.download_root) {
-      DOWNLOAD_ROOT = me.download_root;
-      $("#dlLocalDir").placeholder = defaultDlDir("my-dataset");
-    }
   } catch (e) {
     $("#who").textContent = "not authenticated";
     toast(e.message, "err", 12000);
