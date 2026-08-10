@@ -101,6 +101,18 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   hatch rather than a sixth hue. Every band is also named in the legend, on hover, and
   directly on wide bands — identity is never colour alone.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
+- **Bulk render.** The render dialog carries the episode list itself — checkboxes with the
+  same **✓ success / ✗ fail / · discard** marker the sidebar shows, a filter by index or task,
+  and quick-select chips (`All`, `None`, `✓ success (201)`, `✗ fail (8)`, `– unmarked`) that
+  act on whatever the filter is showing. So "render every failed run" is two clicks instead of
+  cross-referencing the list and typing `3,17,42,…`. The chips only appear for datasets that
+  carry an outcomes sidecar, and only for outcomes that are actually present.
+  **Frame trimming is single-episode only** — a trim belongs to one episode's timeline, so with
+  a bulk selection that block hides and every episode renders in full rather than being cut to
+  the first one's length. **Also bundle into one .zip** adds an archive next to the clips —
+  stored, not deflated, since MP4/GIF are already compressed and the point is one file to copy,
+  not a smaller one. The individual files are kept either way, and the zip only appears once
+  it is complete (written to `.part` first).
 - **Render** episodes to **MP4 or GIF** — pick episodes (`7`, `0,3,5`, `0-9`), which cameras
   and in what order, speed (0.5×–16×), panel height, and a **frame range** — a two-handle
   slider with **live previews of the start and end frames**, so you can see exactly where
@@ -295,7 +307,8 @@ GET  /api/ds/videoprobe?root=&key=&…        # codec / resolution (PyAV)
 GET  /api/ds/series?root=&ep=&keys=&max_points=   # downsampled per-episode timeseries
 POST /api/ds/render              {root, episodes[], cameras[], fmt, speed, height,
                                   frame_start, frame_end, gif_fps, gif_width,
-                                  show_camera_labels, show_counter, show_task, out_dir}
+                                  show_camera_labels, show_counter, show_task, out_dir,
+                                  zip_output}
 
 POST /api/ds/edit/tasks          {root, episode_tasks: {ep: text}}
 POST /api/ds/edit/delete-episodes {root, episodes[]}

@@ -406,6 +406,7 @@ function dsWire() {
     $("#rdGifRow").hidden = e.target.value !== "gif";
   });
   $("#rdBrowse").addEventListener("click", () => openFolderPicker("rdOutDir", "Choose an output folder"));
+  $("#rdEpFilter").addEventListener("input", rdRenderEpisodes);
   $("#rdFrom").addEventListener("input", () => syncRange("from"));
   $("#rdTo").addEventListener("input", () => syncRange("to"));
   $("#rdUseView").addEventListener("click", () => {
@@ -493,7 +494,9 @@ async function openRenderDialog() {
     return toast(`Cannot check ffmpeg: ${e.message}`, "err");
   }
 
-  $("#rdEpisodes").value = String(DS.ep.ep);
+  RD.sel = new Set([DS.ep.ep]);       // start on the episode you were watching
+  $("#rdEpFilter").value = "";
+  rdRenderEpisodes();
   setRangeBounds(DS.ep.length - 1);
   $("#rdFrom").value = "0";
   $("#rdTo").value = String(DS.ep.length - 1);
@@ -507,6 +510,101 @@ async function openRenderDialog() {
   $("#rdGifRow").hidden = $("#rdFormat").value !== "gif";
   $("#renderModal").hidden = false;
   rdPreviewLoad();
+}
+
+/* ---- bulk episode selection ------------------------------------------- *
+ * Typing "0,3,5-9" was fine for one or two episodes and useless for picking, say, every
+ * failed run out of 54 — you had to cross-reference the list behind the modal and count.
+ * So the modal carries the episode list itself, with the outcome marker the sidebar shows,
+ * and the quick-select chips do the cross-referencing for you. */
+const RD = { sel: new Set() };
+
+const RD_OUTCOME_MARK = { success: "✓", fail: "✗", discard: "·" };
+
+function rdVisibleEpisodes() {
+  const q = $("#rdEpFilter").value.trim().toLowerCase();
+  if (!q) return DS.eps;
+  return DS.eps.filter((e) =>
+    String(e.ep).includes(q) || (e.tasks[0] || "").toLowerCase().includes(q));
+}
+
+function rdRenderEpisodes() {
+  const rows = rdVisibleEpisodes();
+  const list = $("#rdEpList");
+  list.replaceChildren(...rows.map((e) => {
+    // /api/ds/outcomes maps episode -> the outcome *string*, not a row object.
+    const outcome = DS.outcomes[String(e.ep)] || null;
+    const row = el("div", { className: "rd-eprow" + (RD.sel.has(e.ep) ? " on" : "") });
+    const cb = el("input", { type: "checkbox", checked: RD.sel.has(e.ep) });
+    cb.addEventListener("change", () => {
+      cb.checked ? RD.sel.add(e.ep) : RD.sel.delete(e.ep);
+      rdRenderEpisodes();
+    });
+    row.append(cb,
+      el("span", { className: "ep-idx" }, `#${e.ep}`),
+      el("span", { className: `ep-outcome ${outcome || ""}`, title: outcome || "no outcome recorded" },
+        outcome ? RD_OUTCOME_MARK[outcome] : "–"),
+      el("span", { className: "ep-len" }, `${e.length}f`),
+      el("span", { className: "ep-dur" }, fmtDur(e.length / DS.fps)),
+      el("span", { className: "ep-task" }, e.tasks[0] || "(no task)"));
+    row.addEventListener("click", (ev) => { if (ev.target !== cb) cb.click(); });
+    return row;
+  }));
+  if (!rows.length) list.append(el("div", { className: "pk-note" }, "No episodes match."));
+
+  rdRenderPresets();
+  const frames = DS.eps.filter((e) => RD.sel.has(e.ep)).reduce((a, e) => a + e.length, 0);
+  $("#rdEpCount").textContent =
+    `${RD.sel.size} of ${DS.eps.length} selected · ${frames.toLocaleString()} frames`;
+  $("#rdStart").disabled = RD.sel.size === 0;
+  $("#rdStart").textContent = RD.sel.size > 1 ? `Render ${RD.sel.size} episodes` : "Render";
+
+  // Trimming is per-episode; with more than one selected there is no shared frame range.
+  const single = RD.sel.size === 1;
+  $("#rdRangeField").hidden = !single;
+  if (single) {
+    const only = DS.eps.find((e) => e.ep === [...RD.sel][0]);
+    if (only) {
+      setRangeBounds(only.length - 1);
+      if (Number($("#rdTo").value) > only.length - 1) $("#rdTo").value = String(only.length - 1);
+      syncRange();
+    }
+  }
+}
+
+function rdRenderPresets() {
+  const chip = (label, fn, title) => {
+    const b = el("button", { className: "chip", type: "button", title: title || label }, label);
+    b.style.setProperty("--chip-color", "var(--accent-2)");
+    b.addEventListener("click", () => { fn(); rdRenderEpisodes(); });
+    return b;
+  };
+  // Chips act on what the filter is showing, so "All" after a filter means "all of these".
+  const shown = () => rdVisibleEpisodes();
+  const byOutcome = (want) => shown().filter((e) =>
+    (DS.outcomes[String(e.ep)] || null) === want);
+
+  const chips = [
+    chip("All", () => shown().forEach((e) => RD.sel.add(e.ep)), "Select every episode shown"),
+    chip("None", () => RD.sel.clear(), "Clear the selection"),
+  ];
+  // Only offer outcome filters for datasets that actually carry the sidecar.
+  if (DS.info?.profile?.outcomes) {
+    for (const [key, mark] of Object.entries(RD_OUTCOME_MARK)) {
+      const n = byOutcome(key).length;
+      if (!n) continue;
+      chips.push(chip(`${mark} ${key} (${n})`,
+        () => byOutcome(key).forEach((e) => RD.sel.add(e.ep)),
+        `Add the ${n} ${key} episode(s) to the selection`));
+    }
+    const none = byOutcome(null).length;
+    if (none) {
+      chips.push(chip(`– unmarked (${none})`,
+        () => byOutcome(null).forEach((e) => RD.sel.add(e.ep)),
+        `Add the ${none} episode(s) with no outcome recorded`));
+    }
+  }
+  $("#rdEpPresets").replaceChildren(...chips);
 }
 
 /** Point the two range inputs at this episode's frame count. */
@@ -584,8 +682,9 @@ function syncRange(pushed) {
 }
 
 async function startRender() {
-  const episodes = parseEpisodeSpec($("#rdEpisodes").value);
-  if (!episodes.length) return toast("No valid episodes in that list", "err");
+  const episodes = [...RD.sel].sort((a, b) => a - b);
+  if (!episodes.length) return toast("Tick at least one episode", "err");
+  const single = episodes.length === 1;
 
   const cameras = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
   const body = {
@@ -598,18 +697,21 @@ async function startRender() {
     height: Number($("#rdHeight").value) || 320,
     gif_fps: Number($("#rdGifFps").value) || 12,
     gif_width: Number($("#rdGifWidth").value) || 640,
-    frame_start: Math.max(0, Number($("#rdFrom").value) || 0),
-    // Always send an explicit end; episodes shorter than the range are clamped server-side.
-    frame_end: Number($("#rdTo").value),
+    // A trim belongs to one episode's timeline. Across a bulk selection there is no shared
+    // range, so every episode renders in full rather than being cut to the first one's.
+    frame_start: single ? Math.max(0, Number($("#rdFrom").value) || 0) : 0,
+    frame_end: single ? Number($("#rdTo").value) : null,
     show_camera_labels: $("#rdLabels").checked,
     show_counter: $("#rdCounter").checked,
     show_task: $("#rdTask").checked,
     write_metadata: $("#rdMeta").checked,
+    zip_output: $("#rdZip").checked,
   };
   try {
     await api("/api/ds/render", { method: "POST", body });
     $("#renderModal").hidden = true;
-    toast(`Rendering ${episodes.length} episode(s) — see the Jobs tab for progress`, "info", 7000);
+    toast(`Rendering ${episodes.length} episode(s)${$("#rdZip").checked ? " + zip" : ""}`
+          + " — see the Jobs tab for progress", "info", 7000);
     loadJobs();   // start the badge ticking straight away
   } catch (e) {
     toast(`Render failed to start: ${e.message}`, "err", 10000);

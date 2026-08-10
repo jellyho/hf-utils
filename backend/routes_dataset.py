@@ -138,6 +138,9 @@ class RenderBody(BaseModel):
     show_counter: bool = True
     show_task: bool = False
     write_metadata: bool = True
+    # Bundle the rendered files into one archive as well. Additive, never destructive:
+    # the individual clips stay on disk, so a failed copy off the machine loses nothing.
+    zip_output: bool = False
 
 
 @router.post("/render")
@@ -163,16 +166,19 @@ def render(body: RenderBody) -> dict:
     # subsequent push_to_hub.
     out_dir = Path(body.out_dir).expanduser() if body.out_dir else base.parent / f"{base.name}_renders"
 
-    options = body.model_dump(exclude={"root", "episodes", "out_dir"})
+    # zip_output drives the worker, not the renderer — RenderOptions describes one clip.
+    options = body.model_dump(exclude={"root", "episodes", "out_dir", "zip_output"})
     job = JOBS.start(
         kind="ds_render",
-        label=f"{base.name} · {len(body.episodes)} ep → {body.fmt}",
+        label=f"{base.name} · {len(body.episodes)} ep → {body.fmt}"
+              + (" + zip" if body.zip_output else ""),
         local_dir=str(out_dir),
         ds_root=str(base),
         dataset_name=base.name,
         episodes=body.episodes,
         out_dir=str(out_dir),
         options=options,
+        zip_output=body.zip_output,
     )
     return job.public()
 

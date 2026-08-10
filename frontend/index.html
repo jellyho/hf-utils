@@ -389,13 +389,27 @@
       <h3>Render episodes</h3>
       <p class="modal-sub" id="renderSub"></p>
 
+      <label class="field"><span>Episodes</span>
+        <div class="rd-eptools">
+          <input class="search" id="rdEpFilter" type="search"
+                 placeholder="filter by index or task…" autocomplete="off" />
+          <span class="count" id="rdEpCount"></span>
+        </div>
+        <div class="pk-chiprow" id="rdEpPresets"></div>
+        <div class="rd-eplist" id="rdEpList"></div>
+      </label>
+
       <div class="form-row">
-        <label class="field"><span>Episodes</span>
-          <input class="search" id="rdEpisodes" placeholder="7  or  0,3,5  or  0-9" autocomplete="off" /></label>
         <label class="field"><span>Format</span>
           <select class="select" id="rdFormat">
             <option value="mp4">MP4 (H.264)</option>
             <option value="gif">GIF</option>
+          </select></label>
+        <label class="field"><span>Speed</span>
+          <select class="select" id="rdSpeed">
+            <option value="0.5">0.5×</option><option value="1">1×</option>
+            <option value="2">2×</option><option value="4" selected>4×</option>
+            <option value="8">8×</option><option value="16">16×</option>
           </select></label>
       </div>
 
@@ -403,12 +417,6 @@
         <div class="cam-checks" id="rdCameras"></div></label>
 
       <div class="form-row">
-        <label class="field"><span>Speed</span>
-          <select class="select" id="rdSpeed">
-            <option value="0.5">0.5×</option><option value="1">1×</option>
-            <option value="2">2×</option><option value="4" selected>4×</option>
-            <option value="8">8×</option><option value="16">16×</option>
-          </select></label>
         <label class="field"><span>Panel height (px)</span>
           <input class="search" id="rdHeight" type="number" min="80" max="1080" step="20" value="320" /></label>
       </div>
@@ -420,7 +428,9 @@
           <input class="search" id="rdGifWidth" type="number" min="120" max="1920" step="20" value="640" /></label>
       </div>
 
-      <label class="field"><span>Frame range</span>
+      <!-- Trimming is per-episode, so it only makes sense for a single selection; with a
+           bulk selection this whole block is hidden and every episode renders in full. -->
+      <label class="field" id="rdRangeField"><span>Frame range</span>
         <div class="rd-previews">
           <figure class="rd-prev">
             <video id="rdPrevFrom" muted playsinline preload="auto"></video>
@@ -449,6 +459,7 @@
         <label class="checkline"><input type="checkbox" id="rdCounter" checked /><span>Episode · time · frame counter</span></label>
         <label class="checkline"><input type="checkbox" id="rdTask" /><span>Task text</span></label>
         <label class="checkline"><input type="checkbox" id="rdMeta" checked /><span>Write file metadata</span></label>
+        <label class="checkline"><input type="checkbox" id="rdZip" /><span>Also bundle into one .zip</span></label>
       </div>
 
       <label class="field"><span>Output folder</span>

@@ -234,7 +234,7 @@ def do_ds_render(spec: dict) -> None:
     episodes = spec["episodes"]
 
     log(f"[render] {len(episodes)} episode(s) -> {out_dir}  ({opts.fmt}, {opts.speed:g}x)")
-    ok, failed = 0, []
+    ok, failed, made = 0, [], []
     for n, ep in enumerate(episodes, 1):
         row = rows.get(int(ep))
         if row is None:
@@ -245,6 +245,7 @@ def do_ds_render(spec: dict) -> None:
         try:
             produced = render_episode(root, info, row, out_dir, opts, name, log=log)
             artifact(produced)
+            made.append(Path(produced))
             ok += 1
         except RenderError as exc:
             log(f"ERROR episode {ep}: {exc}")
@@ -254,6 +255,39 @@ def do_ds_render(spec: dict) -> None:
         raise RuntimeError(f"no episodes rendered (failed: {failed})")
     if failed:
         log(f"[warn] failed episodes: {failed}")
+
+    if spec.get("zip_output"):
+        bundle = _zip_files(made, out_dir, f"{name}_{ok}ep_{opts.fmt}")
+        log(f"[render] bundled {ok} file(s) -> {bundle}")
+        log("[render] the individual files are kept as well")
+        artifact(bundle)
+
+
+def _zip_files(paths, out_dir: Path, stem: str) -> Path:
+    """Bundle rendered clips into one archive beside them.
+
+    Stored, not deflated: MP4 and GIF are already compressed, so deflate spends real CPU on
+    a percent or so. The point of the zip is one file to copy, not a smaller one.
+    """
+    import zipfile
+
+    target = out_dir / f"{stem}.zip"
+    n = 2
+    while target.exists():          # never silently replace an earlier bundle
+        target = out_dir / f"{stem}({n}).zip"
+        n += 1
+
+    tmp = target.with_suffix(".zip.part")
+    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
+        for i, path in enumerate(paths, 1):
+            path = Path(path)
+            if not path.is_file():
+                log(f"[warn] missing when zipping: {path}")
+                continue
+            log(f"[zip] {i}/{len(paths)} {path.name}")
+            zf.write(path, arcname=path.name)
+    os.replace(tmp, target)         # only appears once it is complete
+    return target
 
 
 # --------------------------------------------------------------------------- #

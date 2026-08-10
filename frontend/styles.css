@@ -528,6 +528,21 @@ a.btn { display: inline-block; text-decoration: none; }
 .cam-checks { padding: 6px 0; }
 .checkgrid { margin: 6px 0 14px; }
 
+/* ---- bulk episode selection in the render dialog ---- */
+.rd-eptools { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.rd-eptools .search { flex: 1; min-width: 0; }
+.rd-eplist {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+  max-height: 210px; overflow: auto; padding: 4px;
+}
+.rd-eprow {
+  display: grid; grid-template-columns: 18px 44px 16px 50px 58px 1fr;
+  gap: 8px; align-items: center; cursor: pointer;
+  padding: 4px 8px; border-radius: 6px; font-size: 12px;
+}
+.rd-eprow:hover { background: var(--panel); }
+.rd-eprow.on { background: rgba(79, 140, 255, 0.12); }
+
 /* Trim previews: both endpoints on screen at once, so you never drag one handle back
    and forth just to see what the other one is sitting on. */
 .rd-previews { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 4px; }
