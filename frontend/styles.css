@@ -282,6 +282,18 @@ a.btn { display: inline-block; text-decoration: none; }
 }
 .ds-side-head { display: flex; gap: 8px; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); }
 .ds-side-head .search { flex: 1; min-width: 0; }
+.ep-stats {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  padding: 7px 10px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-family: ui-monospace, monospace;
+}
+.ep-stats:empty { display: none; }
+.ep-stat { color: var(--muted); white-space: nowrap; }
+.ep-stat.total { color: var(--text); font-weight: 700; }
+/* Same colours the per-episode outcome markers use, so the row reads as their sum. */
+.ep-stat.success { color: var(--ok); }
+.ep-stat.fail { color: var(--danger); }
+
 .ds-eplist { max-height: 68vh; overflow: auto; }
 .ep-row {
   display: grid; grid-template-columns: 46px 46px 62px 1fr; gap: 8px; align-items: center;

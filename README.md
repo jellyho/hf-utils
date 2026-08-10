@@ -81,6 +81,11 @@ through the website one repo at a time.
 Open any local v3.0 dataset folder (including one straight out of the HF cache).
 
 - **Episode list** with frame count, duration and task; filter by index or task text.
+- **How much footage, split by outcome.** The header carries the dataset's total running time
+  (`209 episodes · 1h 42m · 184,458 frames`), and above the episode list a row breaks it down:
+  `1h 42m total · ✓ 1h 38m · ✗ 4m 24s`. Counting episodes doesn't answer "how many hours of
+  successes do I have?" when they run from 30 s to 2 minutes. The breakdown **follows the
+  filter**, so narrowing to one task gives that task's hours; the header stays dataset-wide.
 - **All cameras in sync.** A v3.0 dataset packs many episodes into one MP4 per camera, so an
   episode is a window `[from_timestamp, to_timestamp]` into a shared file. The viewer serves
   the whole file over HTTP Range and seeks inside it — no clip extraction, no transcoding.

@@ -65,6 +65,7 @@ async function dsOpen(path) {
     $("#dsBody").hidden = false;
     $("#dsInfo").textContent =
       `${info.name} · ${info.codebase_version} · ${info.total_episodes} episodes · ` +
+      `${fmtSpan(info.total_frames / (info.fps || 30))} · ` +
       `${info.total_frames.toLocaleString()} frames · ${info.fps} fps` +
       (info.robot_type ? ` · ${info.robot_type}` : "");
     (info.warnings || []).forEach((w) => toast(w, "err", 9000));
@@ -103,6 +104,49 @@ function visibleEpisodes() {
     String(e.ep).includes(q) || (e.tasks[0] || "").toLowerCase().includes(q));
 }
 
+/** Longer spans than fmtDur: "3h 12m" reads better than "192m 30.0s" for a whole dataset. */
+function fmtSpan(seconds) {
+  if (!isFinite(seconds) || seconds <= 0) return "0m";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h) return `${h}h ${m}m`;
+  const s = Math.round(seconds % 60);
+  return m ? `${m}m ${s}s` : `${s}s`;
+}
+
+/* How much footage the dataset holds, split by outcome — "how many hours of successes do
+ * I actually have?" is the question you ask before training on it, and counting episodes
+ * does not answer it when they range from 30s to 2 minutes.
+ *
+ * Follows the filter, so filtering to one task gives that task's hours. With the filter
+ * empty (the default) that is the whole dataset. */
+function renderEpisodeStats(rows) {
+  const box = $("#epStats");
+  const fps = DS.fps || 30;
+  if (!rows.length) { box.replaceChildren(); return; }
+
+  const frames = new Map();
+  let total = 0;
+  for (const e of rows) {
+    total += e.length;
+    const key = DS.outcomes[String(e.ep)] || "unmarked";
+    frames.set(key, (frames.get(key) || 0) + e.length);
+  }
+
+  const parts = [el("span", { className: "ep-stat total" },
+    `${fmtSpan(total / fps)} total`)];
+  // Fixed order so the row doesn't reshuffle as the filter changes; only what is present.
+  for (const key of ["success", "fail", "discard", "unmarked"]) {
+    const n = frames.get(key);
+    if (!n) continue;
+    const mark = { success: "✓", fail: "✗", discard: "·", unmarked: "–" }[key];
+    const pct = Math.round((n / total) * 100);
+    parts.push(el("span", { className: `ep-stat ${key}`, title: `${pct}% of the shown footage` },
+      `${mark} ${fmtSpan(n / fps)}`));
+  }
+  box.replaceChildren(...parts);
+}
+
 function renderEpisodeList() {
   const rows = visibleEpisodes();
   const shown = rows.slice(0, MAX_EPISODE_ROWS);
@@ -134,6 +178,7 @@ function renderEpisodeList() {
   }
   if (!rows.length) list.append(el("div", { className: "fs-empty" }, "no episodes match"));
   $("#epCount").textContent = `${rows.length} / ${DS.eps.length}`;
+  renderEpisodeStats(rows);
 }
 
 /* ----------------------------------------------------------------------- *
