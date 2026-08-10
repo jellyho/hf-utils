@@ -101,6 +101,11 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   hatch rather than a sixth hue. Every band is also named in the legend, on hover, and
   directly on wide bands — identity is never colour alone.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
+- **Camera order.** ffmpeg `hstack`s the panels in the order it is handed them, so the
+  cameras are a reorderable list rather than a checkbox grid — tick what to include, `↑`/`↓`
+  to arrange, and the number on each row is where that panel lands in the strip. Top to bottom
+  in the dialog is left to right in the video, and the order is recorded in the file's
+  `comment` metadata tag.
 - **Bulk render.** The render dialog carries the episode list itself — checkboxes with the
   same **✓ success / ✗ fail / · discard** marker the sidebar shows, a filter by index or task,
   and quick-select chips (`All`, `None`, `✓ success (201)`, `✗ fail (8)`, `– unmarked`) that

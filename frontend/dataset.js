@@ -501,12 +501,9 @@ async function openRenderDialog() {
   $("#rdFrom").value = "0";
   $("#rdTo").value = String(DS.ep.length - 1);
   syncRange();
-  const cams = $("#rdCameras");
-  cams.replaceChildren(...Object.keys(DS.ep.videos).map((key) => {
-    const cb = el("input", { type: "checkbox", value: key });
-    cb.addEventListener("change", rdPreviewLoad);   // preview follows the camera choice
-    return el("label", { className: "checkline" }, cb, el("span", {}, shortCam(key)));
-  }));
+  RD.cams = Object.keys(DS.ep.videos);      // info.json order to start with
+  RD.camOn = new Set(RD.cams);
+  rdRenderCameras();
   $("#rdGifRow").hidden = $("#rdFormat").value !== "gif";
   $("#renderModal").hidden = false;
   rdPreviewLoad();
@@ -517,7 +514,50 @@ async function openRenderDialog() {
  * failed run out of 54 — you had to cross-reference the list behind the modal and count.
  * So the modal carries the episode list itself, with the outcome marker the sidebar shows,
  * and the quick-select chips do the cross-referencing for you. */
-const RD = { sel: new Set() };
+const RD = { sel: new Set(), cams: [], camOn: new Set() };
+
+/* ---- camera order ------------------------------------------------------ *
+ * ffmpeg hstacks the panels in the order it is given them, and RenderOptions.cameras has
+ * always been an ordered list — the dialog just had no way to say anything but "these ones,
+ * in info.json order". A plain checkbox grid cannot express order at all, so the cameras
+ * become a reorderable list and the request always names them explicitly. */
+
+/** The ticked cameras, in the order the list shows them = left to right in the output. */
+const rdCamOrder = () => RD.cams.filter((k) => RD.camOn.has(k));
+
+function rdRenderCameras() {
+  const order = rdCamOrder();
+  $("#rdCameras").replaceChildren(...RD.cams.map((key, i) => {
+    const on = RD.camOn.has(key);
+    const row = el("div", { className: "cam-row" + (on ? "" : " off") });
+    const cb = el("input", { type: "checkbox", value: key, checked: on });
+    cb.addEventListener("change", () => {
+      cb.checked ? RD.camOn.add(key) : RD.camOn.delete(key);
+      rdRenderCameras();
+      rdPreviewLoad();          // the preview follows the first ticked camera
+    });
+    const move = (delta, label, disabled) => {
+      const b = el("button", { className: "btn tiny ghost", type: "button", disabled }, label);
+      b.addEventListener("click", (e) => { e.preventDefault(); rdMoveCamera(i, delta); });
+      return b;
+    };
+    row.append(
+      cb,
+      el("span", { className: "cam-pos" }, on ? String(order.indexOf(key) + 1) : "–"),
+      el("span", { className: "cam-name" }, shortCam(key)),
+      move(-1, "↑", i === 0),
+      move(1, "↓", i === RD.cams.length - 1));
+    return row;
+  }));
+}
+
+function rdMoveCamera(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= RD.cams.length) return;
+  [RD.cams[i], RD.cams[j]] = [RD.cams[j], RD.cams[i]];
+  rdRenderCameras();
+  rdPreviewLoad();
+}
 
 const RD_OUTCOME_MARK = { success: "✓", fail: "✗", discard: "·" };
 
@@ -620,9 +660,8 @@ function setRangeBounds(maxFrame) {
  * streams, so the browser serves them out of the byte ranges it has cached. */
 const rdPreviewCam = () => {
   if (!DS.ep) return null;
-  const checked = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
   const keys = Object.keys(DS.ep.videos);
-  return checked.find((k) => keys.includes(k)) || keys[0] || null;
+  return rdCamOrder().find((k) => keys.includes(k)) || keys[0] || null;
 };
 
 async function rdPreviewLoad() {
@@ -686,7 +725,9 @@ async function startRender() {
   if (!episodes.length) return toast("Tick at least one episode", "err");
   const single = episodes.length === 1;
 
-  const cameras = [...document.querySelectorAll("#rdCameras input:checked")].map((c) => c.value);
+  // Always explicit, and in list order — the server stacks them left to right as given.
+  const cameras = rdCamOrder();
+  if (!cameras.length) return toast("Tick at least one camera", "err");
   const body = {
     root: DS.root,
     episodes,

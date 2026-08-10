@@ -526,6 +526,23 @@ a.btn { display: inline-block; text-decoration: none; }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 12px;
 }
 .cam-checks { padding: 6px 0; }
+
+/* Cameras are an ordered list, not a checkbox grid — a grid cannot express "this one goes
+   on the left". The number is the panel's position in the rendered strip. */
+.cam-order { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+.cam-row {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-2); padding: 4px 9px;
+}
+.cam-row.off { opacity: .55; }
+.cam-pos {
+  min-width: 18px; text-align: center; font-weight: 700; font-size: 11px;
+  color: var(--accent-2); font-family: ui-monospace, monospace;
+}
+.cam-row.off .cam-pos { color: var(--muted); }
+.cam-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-row .btn { padding: 2px 7px; }
 .checkgrid { margin: 6px 0 14px; }
 
 /* ---- bulk episode selection in the render dialog ---- */
