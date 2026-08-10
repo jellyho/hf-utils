@@ -15,13 +15,25 @@ through the website one repo at a time.
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub — all of it, or **just the files you tick** — and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
-| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, **Resume** for anything that stopped part-way, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
+| **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, **Resume** for anything that stopped part-way, **✕** to drop a job you're done with, and **Open folder** when it's done. **The list survives a restart**, and a transfer that outlived the server is picked back up rather than lost. A badge on the tab counts what's still running, wherever you are in the app. |
 | **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
 - Downloads land in `~/hf_utils_downloads` — outside the checkout, since a model repo can run
   to tens of GB. Set `HFUTIL_DOWNLOAD_ROOT` to put them somewhere else, or type an absolute path.
-- A cancelled or failed download keeps its partial files, so **Resume** continues instead of
-  starting the transfer over.
+- A cancelled, failed or interrupted download keeps its files, so **Resume** continues instead
+  of starting the transfer over — completed files are skipped outright and a partial one picks
+  up from its `.incomplete`.
+- **Jobs outlive the server.** Records and logs are kept under `~/.hfutil/jobs`
+  (`HFUTIL_STATE_DIR`), so restarting no longer empties the Jobs tab. On startup a transfer
+  whose worker is *still running* is re-adopted and keeps streaming into the UI (badged
+  `adopted`); one whose worker is gone is marked **interrupted** — amber, not red, because the
+  bytes are on disk and it only needs running again. **✕** removes a single job and its log;
+  files on disk are never touched.
+- Workers log to a **file, not a pipe**, which is what makes the above safe. With a pipe the
+  server is the only reader: kill it mid-transfer and nobody drains the pipe, its 64 KB buffer
+  fills with tqdm redraws, the writing thread blocks, and every download thread deadlocks
+  behind it — a live 82 GB download that never advances another byte and never exits. (That is
+  not hypothetical; it is why this changed.) A file has no reader to lose.
 - Transfers pick their backend from how much RAM is free. Measured on one 3.08 GB checkpoint
   shard: the Hub's Xet backend peaks at **1.88 GB resident and 11.5 MB/s**, plain streaming at
   **0.06 GB and 5.5 MB/s** — Xet buffers ~60% of a file in memory to reconstruct it, and buys
@@ -268,6 +280,9 @@ POST /api/transfer/upload        {repo_id, repo_type, local_dir, private, use_le
 GET  /api/jobs                             # all transfer jobs (short log tail)
 GET  /api/jobs/{id}                        # one job (full log tail)
 POST /api/jobs/{id}/cancel
+POST /api/jobs/{id}/resume                 # re-run the spec; downloads continue
+DELETE /api/jobs/{id}                      # drop one job + its log (files are kept)
+POST /api/jobs/clear                       # drop every finished job
 
 GET  /api/fs/list?path=                     # browse a local dir (drives/home when empty)
 POST /api/fs/mkdir               {path, name}

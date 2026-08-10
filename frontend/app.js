@@ -559,12 +559,16 @@ function renderJobCard(j) {
     el("span", { className: "job-meta" }, meta),
   );
   if (j.status === "running") {
+    if (j.adopted) {
+      // Survived a server restart — say so, or "running" with no cancel history looks wrong.
+      head.append(el("span", { className: "badge muted", title: "re-attached after a server restart" }, "adopted"));
+    }
     const cancel = el("button", { className: "btn tiny danger" }, "Cancel");
     cancel.addEventListener("click", () => cancelJob(j.id));
     head.append(cancel);
   } else {
-    // A cancelled or failed download still has its partial files on disk, so running it
-    // again continues from where it stopped instead of re-fetching what it already has.
+    // An interrupted, cancelled or failed download still has its files on disk, so running
+    // it again continues from where it stopped instead of re-fetching what it already has.
     if (j.status !== "success") {
       const resume = el("button", { className: "btn tiny" },
                         j.kind === "download" ? "↻ Resume" : "↻ Retry");
@@ -577,6 +581,12 @@ function renderJobCard(j) {
       open.addEventListener("click", () => revealFolder(j.local_dir));
       head.append(open);
     }
+    const rm = el("button", {
+      className: "btn tiny ghost job-rm",
+      title: "Remove this job from the list (downloaded files are kept)",
+    }, "✕");
+    rm.addEventListener("click", () => removeJob(j.id, j.label || j.repo_id));
+    head.append(rm);
   }
   card.append(head);
 
@@ -638,6 +648,14 @@ async function revealFolder(path) {
 async function cancelJob(id) {
   try { await api(`/api/jobs/${id}/cancel`, { method: "POST" }); loadJobs(); }
   catch (e) { toast(`Cancel failed: ${e.message}`, "err"); }
+}
+
+async function removeJob(id, label) {
+  try {
+    await api(`/api/jobs/${id}`, { method: "DELETE" });
+    toast(`Removed ${label} from the list — files on disk are untouched`, "ok");
+    loadJobs();
+  } catch (e) { toast(`Remove failed: ${e.message}`, "err", 8000); }
 }
 
 async function resumeJob(id) {

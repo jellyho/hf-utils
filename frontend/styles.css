@@ -263,6 +263,13 @@ a.btn { display: inline-block; text-decoration: none; }
 .badge.success { color: var(--ok); border-color: rgba(34,197,94,.4); }
 .badge.error   { color: var(--danger); border-color: rgba(239,68,68,.45); }
 .badge.cancelled { color: var(--muted); }
+/* The server went away mid-transfer. Not an error — the work is on disk, it just needs
+   running again — so it wears the "unfinished" amber rather than the failure red. */
+.badge.interrupted { color: var(--accent); border-color: rgba(255,176,32,.45); }
+/* Needs the .job-head prefix to beat `.job-head .btn { margin-left: auto }`, which would
+   otherwise spread the buttons apart and float this one away from the row it deletes. */
+.job-head .job-rm { margin-left: 4px; opacity: .6; }
+.job-head .job-rm:hover { opacity: 1; color: var(--danger); border-color: var(--danger); }
 
 /* ---- LeRobot dataset viewer ---- */
 .ds-path { flex: 1; min-width: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
@@ -592,7 +599,12 @@ a.btn { display: inline-block; text-decoration: none; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pk-row.dir .pk-name { font-family: inherit; font-size: 13px; font-weight: 600; }
-.pk-size { color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* margin on top of the row gap, and never shrink: once a long name ellipsizes, the row's
+   8px gap alone leaves the "…" reading as part of the number next to it. */
+.pk-size {
+  color: var(--muted); font-size: 11px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; flex: 0 0 auto; margin-left: 12px;
+}
 .pk-note { color: var(--muted); font-size: 12px; padding: 8px; }
 
 .pk-summary {

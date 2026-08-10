@@ -502,6 +502,23 @@ def job_resume(job_id: str) -> dict:
     return {"ok": True, "id": job.id}
 
 
+@app.delete("/api/jobs/{job_id}")
+def job_remove(job_id: str) -> dict:
+    """Drop one job from the list, with its stored log.
+
+    Only the record goes -- downloaded files are never touched, so removing an
+    interrupted download and starting it again still resumes from what is on disk.
+    A running job has to be cancelled first; removing it would leave a worker writing
+    to a log nothing is reading, which is the failure this whole module exists to avoid.
+    """
+    removed = JOBS.remove(job_id)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if removed is False:
+        raise HTTPException(status_code=409, detail="job is still running — cancel it first")
+    return {"ok": True}
+
+
 # --------------------------------------------------------------------------- #
 # Local filesystem browsing (for the folder picker) — 127.0.0.1 only
 # --------------------------------------------------------------------------- #
