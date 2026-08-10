@@ -77,6 +77,8 @@ async function dsOpen(path) {
       } catch { /* sidecar unreadable; carry on without it */ }
     }
     $("#dsOutcomeRow").hidden = !info.profile?.outcomes;
+    // Same detect-never-assume rule: the strip exists only where the feature does.
+    $("#dsCmodeRow").hidden = !info.profile?.control_mode;
 
     $("#dsCams").replaceChildren();
     renderEpisodeList();
@@ -249,6 +251,7 @@ async function selectEpisode(index) {
   seekToFrame(0, true);
   onEpisodeChangedForPlots();
   renderOutcome();
+  if (typeof cmLoad === "function") cmLoad();
   if (typeof annRender === "function") { ANN.sel = null; annRender(); }
 }
 
@@ -275,6 +278,7 @@ function updateTransport() {
   $("#dsPlay").textContent = DS.playing ? "❚❚" : "▶";
   if (typeof updatePlotCursor === "function") updatePlotCursor();
   if (typeof annUpdateCursor === "function") annUpdateCursor();
+  if (typeof cmUpdateCursor === "function") cmUpdateCursor();
 }
 
 /* ----------------------------------------------------------------------- *

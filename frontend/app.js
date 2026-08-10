@@ -145,9 +145,15 @@ function renderRepos() {
     });
     tr.append(el("td", { className: "c-check" }, cb));
 
-    // name (with inline rename)
+    // name (with inline rename). Clicking it sets up a download rather than leaving for the
+    // Hub — this is a tool for moving repos around, so the local action is the common one and
+    // the website is the detour. The 🤗 button in Actions is the way out to huggingface.co.
     const nameTd = el("td", { className: "c-name" });
-    const link = el("a", { className: "repo-name", href: r.url, target: "_blank", rel: "noreferrer" }, r.id);
+    const link = el("button", {
+      className: "repo-name", type: "button",
+      title: "Set up a download in the Transfer tab",
+    }, r.id);
+    link.addEventListener("click", () => prefillDownload(r, state.tab));
     nameTd.append(link);
     tr.append(nameTd);
 
@@ -159,14 +165,18 @@ function renderRepos() {
 
     // actions
     const act = el("td", { className: "c-act" });
-    const dlBtn = el("button", { className: "btn tiny ghost", title: "Download" }, "⤓");
-    dlBtn.addEventListener("click", () => prefillDownload(r, state.tab));
+    // A real <a>, not a button that calls window.open — middle-click, "copy link" and
+    // open-in-new-tab all have to keep working.
+    const hubBtn = el("a", {
+      className: "btn tiny ghost", href: r.url, target: "_blank", rel: "noreferrer",
+      title: "Open on huggingface.co",
+    }, "🤗");
     const renameBtn = el("button", { className: "btn tiny ghost", title: "Rename" }, "✎");
     renameBtn.addEventListener("click", () => startRename(r, nameTd, link));
     const visBtn = el("button", { className: "btn tiny ghost", title: "Toggle visibility" },
       r.private ? "Make public" : "Make private");
     visBtn.addEventListener("click", () => toggleVisibility(r, visBtn));
-    act.append(dlBtn, " ", renameBtn, " ", visBtn);
+    act.append(hubBtn, " ", renameBtn, " ", visBtn);
     tr.append(act);
 
     body.append(tr);

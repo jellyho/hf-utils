@@ -222,6 +222,21 @@
           </label>
         </div>
 
+        <!-- Control mode: read-only, and only for datasets that carry
+             observation.control_mode (profile.control_mode) -->
+        <section class="ds-cmode" id="dsCmodeRow" hidden>
+          <div class="cmode-head">
+            <b>Control</b>
+            <span class="cmode-legend" id="cmodeLegend"></span>
+            <span class="spacer"></span>
+            <span class="mono" id="cmodeReadout"></span>
+          </div>
+          <div class="cmode-strip" id="cmodeStrip" title="click to jump to that frame">
+            <div class="cmode-segs" id="cmodeSegs"></div>
+            <div class="cmode-cursor" id="cmodeCursor"></div>
+          </div>
+        </section>
+
         <div class="ds-metarow">
           <!-- #dsEpMeta is replaced wholesale on episode change, so the button lives
                outside it or it would be wiped on the first selection. -->
@@ -511,6 +526,7 @@
   <script src="/download-picker.js"></script>
   <script src="/plot.js"></script>
   <script src="/dataset.js"></script>
+  <script src="/control-mode.js"></script>
   <script src="/annotate.js"></script>
 </body>
 </html>

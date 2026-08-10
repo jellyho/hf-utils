@@ -11,7 +11,7 @@ through the website one repo at a time.
 
 | Tab | What you can do |
 |-----|-----------------|
-| **Models** | List all your models, filter/sort, multi-select **bulk delete**, inline **rename**, toggle **public/private**, one-click **download** |
+| **Models** | List all your models, filter/sort, multi-select **bulk delete**, inline **rename**, toggle **public/private**. Clicking a repo **name** sets up its download in the Transfer tab — this is a tool for moving repos around, so the local action is the common one; **🤗** in Actions is the way out to huggingface.co |
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
 | **Transfer** | **Download** any repo from the Hub — all of it, or **just the files you tick** — and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
@@ -75,6 +75,19 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   Measured on a 244 MB / 357 s 3-camera dataset: **~6 ms per scrub step, 0 ms spread between
   cameras, 0 dropped frames**, and it stays that fast for hour-long files because LeRobot
   writes a keyframe every ~2 frames.
+- **Control-mode strip** — for datasets that carry `observation.control_mode`, a band under
+  the transport showing where each frame came from: **teleop / policy / intervention /
+  replay / homing**. Click it to jump to that frame, hover for the mode and frame range, and
+  the legend doubles as a per-episode summary (`policy 77% · intervention 23% · homing <1%`),
+  so a heavily-intervened episode is obvious at a glance. Read-only — the recorder owns
+  writing the feature, since it is the thing that understands the robot.
+  Only three of the five modes get a hue: any two modes can end up touching on a timeline, so
+  this is an *all-pairs* palette problem, and no 4- or 5-colour subset of the validated
+  categorical palette clears the normal-vision floor in both themes (enumerated with
+  `validate_palette.js`, not eyeballed). So the three modes that say *who is driving* take the
+  validated trio, and the two that mean "not live control" share one neutral, separated by a
+  hatch rather than a sixth hue. Every band is also named in the legend, on hover, and
+  directly on wide bands — identity is never colour alone.
 - **Keyboard**: `space` play/pause, `←/→` step a frame (`shift` = 10), `↑/↓` change episode.
 - **Render** episodes to **MP4 or GIF** — pick episodes (`7`, `0,3,5`, `0-9`), which cameras
   and in what order, speed (0.5×–16×), panel height, and a **frame range** — a two-handle
