@@ -97,6 +97,12 @@
             <button class="btn" type="button" id="dlBrowse">Browse…</button>
           </div>
           <span class="hint" id="dlDest"></span></label>
+        <label class="field"><span>Files</span>
+          <div class="path-row">
+            <button class="btn pk-choose" type="button" id="dlPick">Choose files…</button>
+            <button class="btn ghost pk-clear" type="button" id="dlPickClear" hidden>Whole repo</button>
+          </div>
+          <span class="hint" id="dlPickSummary">Everything in the repo</span></label>
         <label class="checkline">
           <input type="checkbox" id="dlLerobot" /><span>Use LeRobot API</span>
           <span class="hint" id="dlDetect"></span></label>
@@ -443,6 +449,39 @@
     </div>
   </div>
 
+  <!-- Partial download: tick exactly which files come down -->
+  <div class="modal-backdrop" id="pkModal" hidden>
+    <div class="modal pick-modal">
+      <h3>Choose files to download</h3>
+      <p class="modal-sub" id="pkSub">…</p>
+
+      <div class="pk-tools">
+        <input class="search" id="pkSearch" type="search"
+               placeholder="type words to find files —  checkpoint 4000" autocomplete="off" />
+        <button class="btn tiny" type="button" id="pkSelMatch">✓ Tick matches</button>
+        <button class="btn tiny ghost" type="button" id="pkDeselMatch">✕ Untick matches</button>
+      </div>
+      <p class="hint" id="pkSearchHint">Plain words, not patterns — a file matches when its path
+        contains every word you type.</p>
+
+      <div class="pk-chiprow" id="pkPresets"></div>
+      <div class="pk-chiprow" id="pkTypes"></div>
+
+      <div class="pk-tree" id="pkTree"></div>
+
+      <div class="pk-summary" id="pkSummary">…</div>
+      <details class="pk-review" id="pkReview">
+        <summary id="pkReviewHead">Review what will be downloaded</summary>
+        <div class="pk-review-body" id="pkReviewBody"></div>
+      </details>
+
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" id="pkCancel">Cancel</button>
+        <button class="btn primary" type="button" id="pkApply">Use this selection</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Folder picker -->
   <div class="modal-backdrop" id="fsModal" hidden>
     <div class="modal fs-modal">
@@ -469,6 +508,7 @@
   <div class="toasts" id="toasts"></div>
 
   <script src="/app.js"></script>
+  <script src="/download-picker.js"></script>
   <script src="/plot.js"></script>
   <script src="/dataset.js"></script>
   <script src="/annotate.js"></script>

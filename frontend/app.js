@@ -650,6 +650,9 @@ async function detectDownload() {
     hint.textContent = res.lerobot ? "LeRobot dataset detected" : (type === "dataset" ? "not a LeRobot dataset" : "");
     hint.className = "hint" + (res.lerobot ? " on" : "");
   } catch { hint.textContent = ""; }
+  // Setting .checked in code fires no "change", so tell the file picker itself — the
+  // LeRobot path can't take a file filter and its button has to grey out.
+  if (typeof pkUpdateDownloadSummary === "function") pkUpdateDownloadSummary();
 }
 
 // Where downloads land, as the server resolves it. Filled in from /api/whoami at start-up;
@@ -684,6 +687,8 @@ async function prefillDownload(r, type) {
   $("#dlRepoId").value = r.id;
   $("#dlRepoType").value = type;
   showDlDest();
+  // Assigning .value fires no event, so the file picker would keep the previous repo's tree.
+  if (typeof pkSyncRepo === "function") pkSyncRepo();
   detectDownload();
   $("#dlRepoId").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -693,13 +698,24 @@ async function startDownload() {
   if (!repo_id.includes("/")) return toast("Enter a full repo id like user/name", "err");
   const parent = dlParent();
   if (!parent) return toast("Choose a folder to download into", "err");
+  const repo_type = $("#dlRepoType").value;
   const local_dir = joinPath(parent, repo_id.split("/").pop());
+  // Null unless the user ticked a subset in the file picker (download-picker.js), which
+  // guards on the repo id, so a filter can never be carried over to a different repo.
+  const filter = typeof pkFilterFor === "function" ? pkFilterFor(repo_id, repo_type) : null;
   try {
     await api("/api/transfer/download", {
       method: "POST",
-      body: { repo_id, repo_type: $("#dlRepoType").value, local_dir, use_lerobot: $("#dlLerobot").checked },
+      body: {
+        repo_id, repo_type, local_dir, use_lerobot: $("#dlLerobot").checked,
+        allow_patterns: filter ? filter.patterns : null,
+        selected_files: filter ? filter.count : null,
+        selected_bytes: filter ? filter.bytes : null,
+      },
     });
-    toast(`Download started: ${repo_id}`, "info");
+    toast(filter
+      ? `Download started: ${repo_id} (${filter.count} of ${filter.total} files)`
+      : `Download started: ${repo_id}`, "info");
     loadJobs();
   } catch (e) { toast(`Failed to start: ${e.message}`, "err", 8000); }
 }

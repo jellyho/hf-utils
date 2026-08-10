@@ -43,6 +43,9 @@ MAX_PARALLEL_FILES = int(os.environ.get("HFUTIL_MAX_PARALLEL_FILES", "4"))
 # episode, a training run -- from being the thing that gets killed.
 LOW_MEMORY_GB = float(os.environ.get("HFUTIL_LOW_MEMORY_GB", "10"))
 
+# How many of a partial download's file patterns to echo into the log before summarising.
+PATTERN_LOG_LIMIT = 40
+
 
 def _available_ram_gb() -> float:
     try:
@@ -119,11 +122,22 @@ def do_download(spec: dict) -> None:
         log(f"[hf] snapshot_download '{repo_id}' ({repo_type}) -> {local_dir}")
         from huggingface_hub import snapshot_download
 
+        # A partial download. Spell the rules out in the log: months later the job card is
+        # the only record of why a folder holds 12 files instead of the repo's 340.
+        allow = spec.get("allow_patterns") or None
+        if allow:
+            log(f"[hf] partial download — keeping only paths matching {len(allow)} rule(s):")
+            for pattern in allow[:PATTERN_LOG_LIMIT]:
+                log(f"[hf]   + {pattern}")
+            if len(allow) > PATTERN_LOG_LIMIT:
+                log(f"[hf]   … and {len(allow) - PATTERN_LOG_LIMIT} more")
+
         path = snapshot_download(
             repo_id=repo_id,
             repo_type=repo_type,
             local_dir=local_dir,
             max_workers=MAX_PARALLEL_FILES,
+            allow_patterns=allow,
         )
         log(f"[hf] done -> {path}")
 

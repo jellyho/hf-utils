@@ -422,6 +422,8 @@ td.c-check { text-align: center; }
 }
 .chip:hover { color: var(--text); }
 .chip.on { color: var(--text); border-color: var(--chip-color); box-shadow: inset 0 0 0 1px var(--chip-color); }
+/* Some but not all of what this chip covers is ticked — an "off" chip would read as none. */
+.chip.part { color: var(--text); border-style: dashed; border-color: var(--chip-color); }
 
 .plot-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
@@ -490,6 +492,63 @@ td.c-check { text-align: center; }
   background: var(--accent-2);
 }
 .dr-readout { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+
+/* ---- download file picker (partial download) ---- */
+/* The Files row is two buttons where every other path-row is input + button. Both selectors
+   need the .path-row prefix to outrank `.panel .btn { width: 100% }`, which would otherwise
+   size the second button to the full row and push it out of the panel. */
+.path-row .pk-choose { flex: 1; }
+.path-row .pk-clear { flex: 0 0 auto; width: auto; }
+
+.pick-modal { width: min(720px, 100%); max-height: 90vh; overflow-y: auto; }
+.pk-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pk-tools .search { flex: 1; min-width: 200px; }
+.pk-tools .btn { white-space: nowrap; }
+.pk-chiprow { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pk-chiprow:empty { display: none; }
+.pk-chiprow .hint { align-self: center; }
+
+.pk-tree {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+  height: 340px; overflow: auto; padding: 4px; margin-top: 4px;
+}
+.pk-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+.pk-row:hover { background: var(--panel); }
+.pk-row.locked { cursor: default; }
+.pk-row .expander { display: inline-block; width: 12px; text-align: center; pointer-events: none; }
+.pk-ic { width: 18px; text-align: center; }
+.pk-name {
+  flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pk-row.dir .pk-name { font-family: inherit; font-size: 13px; font-weight: 600; }
+.pk-size { color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pk-note { color: var(--muted); font-size: 12px; padding: 8px; }
+
+.pk-summary {
+  margin: 12px 0 6px; padding: 8px 12px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-size: 13px; font-weight: 600;
+}
+.pk-review > summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 2px 0; }
+.pk-review > summary:hover { color: var(--text); }
+.pk-review-body {
+  max-height: 240px; overflow: auto; margin-top: 6px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+}
+.pk-head {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 8px 0 4px;
+}
+.pk-head:first-child { margin-top: 0; }
+.pk-rule {
+  font-family: ui-monospace, monospace; font-size: 12px; color: var(--accent);
+  padding: 1px 0; word-break: break-all;
+}
+.pk-review-row { display: flex; gap: 10px; align-items: baseline; padding: 1px 0; }
 
 /* ---- folder picker ---- */
 .path-row { display: flex; gap: 8px; }

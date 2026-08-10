@@ -14,7 +14,7 @@ through the website one repo at a time.
 | **Models** | List all your models, filter/sort, multi-select **bulk delete**, inline **rename**, toggle **public/private**, one-click **download** |
 | **Datasets** | Same as models |
 | **Collections** | List collections, multi-select **bulk delete**, **edit** (title / description / private), expand to **remove items** |
-| **Transfer** | **Download** any repo from the Hub and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
+| **Transfer** | **Download** any repo from the Hub — all of it, or **just the files you tick** — and **upload** a local folder to the Hub. **LeRobot-aware:** LeRobot datasets are auto-detected and can use the LeRobot API instead of plain file transfer. |
 | **Jobs** | Everything long-running — downloads, uploads, renders — with a live log, cancel, **Resume** for anything that stopped part-way, and **Open folder** when it's done. A badge on the tab counts what's still running, wherever you are in the app. |
 | **LeRobot** | Open a local LeRobot **v3.0** dataset and browse it: episode list, all cameras played back **in sync**, frame-accurate scrubbing, keyboard transport, and **state/action plots** that share the video's time cursor. |
 
@@ -37,6 +37,23 @@ through the website one repo at a time.
 
 - **Download**: generic repos use `snapshot_download`; LeRobot datasets (detected by a
   `meta/info.json`) use `LeRobotDataset(...)` so you get the validated dataset structure.
+- **Partial download.** "Choose files…" opens the repo as a checkbox tree with a size on every
+  folder, so a checkpoint repo with one folder per training step doesn't have to come down
+  whole. Nothing here asks for a pattern:
+  - **Tick folders or files.** A folder shows `4/5 files · 11.3 GB` and goes half-ticked when
+    only part of it is picked.
+  - **Search by plain words.** Typing `4000 safetensors` keeps the files whose path contains
+    every word — no globs, no regex — and **Tick matches** applies it to all of them at once,
+    including the ones scrolled off screen.
+  - **One-click presets**: Everything / Nothing, a chip per file type (`.safetensors (8)`),
+    and — when the repo has step-numbered folders — *Newest only — checkpoint-10000*.
+  - **Review before it runs.** The footer always reads `9 of 25 files · 5.3 GB of 45.3 GB`,
+    and the review panel lists both the exact files and the rules that will be sent to the Hub.
+  The ticks are only turned into `allow_patterns` at the end: a fully-ticked folder becomes
+  `<folder>/**` (short to read back, and a resume picks up anything added to it since),
+  anything else goes as its exact path. The job's label and log record what was filtered, and
+  **Resume** re-applies the same rules. LeRobot downloads always fetch the whole dataset — a
+  subset would fail the dataset's own consistency checks — so the button greys out for them.
 - **Upload**: generic folders use `create_repo` + `upload_folder`; a local LeRobot dataset
   uses `LeRobotDataset(root=...).push_to_hub(...)` so the `codebase_version` tag and dataset
   card are written correctly.
@@ -231,7 +248,9 @@ POST /api/collections/remove-item {slug, item_object_id}
 
 GET  /api/detect/hub?repo_id=&repo_type=   # is this Hub repo a LeRobot dataset?
 GET  /api/detect/local?path=               # is this local folder a LeRobot dataset?
-POST /api/transfer/download      {repo_id, repo_type, local_dir, use_lerobot}
+GET  /api/repo/files?repo_id=&repo_type=&revision=  # every file + size (the picker's input)
+POST /api/transfer/download      {repo_id, repo_type, local_dir, use_lerobot,
+                                  allow_patterns?, selected_files?, selected_bytes?}
 POST /api/transfer/upload        {repo_id, repo_type, local_dir, private, use_lerobot}
 GET  /api/jobs                             # all transfer jobs (short log tail)
 GET  /api/jobs/{id}                        # one job (full log tail)

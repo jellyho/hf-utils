@@ -333,6 +333,14 @@ class DownloadBody(BaseModel):
     repo_type: RepoType = "dataset"
     local_dir: str
     use_lerobot: bool = False
+    # Partial download. Only files matching one of these globs are fetched; empty means the
+    # whole repo. The UI builds them from a checkbox tree, so each entry is either an exact
+    # file path or "<folder>/**" — it never asks the user to write a pattern by hand.
+    allow_patterns: Optional[list[str]] = None
+    # What the UI showed in its preview. Only used to label the job, so the Jobs tab can say
+    # "12 of 340 files" instead of leaving a partial download indistinguishable from a full one.
+    selected_files: Optional[int] = None
+    selected_bytes: Optional[int] = None
 
 
 class UploadBody(BaseModel):
@@ -366,12 +374,84 @@ def detect_local(path: str) -> dict:
     }
 
 
+def _fmt_bytes(n: Optional[int]) -> str:
+    if not n:
+        return ""
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1000 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1000.0
+    return ""
+
+
+# A checkpoint repo with one folder per training step can hold a few thousand files; a
+# LeRobot dataset with per-episode parquet runs higher still. Past this the picker stops
+# being usable anyway, so cut it off and say so rather than shipping a 50 MB JSON payload.
+MAX_TREE_FILES = 20_000
+
+
+@app.get("/api/repo/files")
+def repo_files(repo_id: str, repo_type: RepoType = "model",
+               revision: Optional[str] = None) -> dict:
+    """Every file in a Hub repo, with its size — the input to the download picker.
+
+    Flat rather than nested: the tree the UI draws is one grouping pass over this, and a flat
+    list keeps the payload small and the response shape independent of how it gets displayed.
+    """
+    from huggingface_hub.hf_api import RepoFile
+
+    files: list[dict] = []
+    truncated = False
+    try:
+        for item in get_api().list_repo_tree(
+            repo_id, repo_type=repo_type, revision=revision, recursive=True
+        ):
+            if not isinstance(item, RepoFile):   # RepoFolder — the paths already carry it
+                continue
+            if len(files) >= MAX_TREE_FILES:
+                truncated = True
+                break
+            files.append({"path": item.path, "size": int(item.size or 0)})
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_hf_error(exc))
+
+    files.sort(key=lambda f: f["path"])
+    return {
+        "repo_id": repo_id,
+        "repo_type": repo_type,
+        "count": len(files),
+        "total_bytes": sum(f["size"] for f in files),
+        "truncated": truncated,
+        "files": files,
+    }
+
+
 @app.post("/api/transfer/download")
 def transfer_download(body: DownloadBody) -> dict:
     mode = "lerobot" if body.use_lerobot else "generic"
+    patterns = [p.strip() for p in (body.allow_patterns or []) if p.strip()]
+    if patterns and mode == "lerobot":
+        # LeRobotDataset() validates and materialises the whole dataset; handing it a subset
+        # would produce a folder that fails its own consistency checks. Refuse rather than
+        # silently download everything after the user picked a subset.
+        raise HTTPException(
+            status_code=400,
+            detail="File filters apply to plain Hub downloads only — "
+                   "a LeRobot download always fetches the whole dataset.",
+        )
+
+    label = body.repo_id
+    if patterns:
+        n = body.selected_files
+        size = _fmt_bytes(body.selected_bytes)
+        label = (f"{body.repo_id} ({n} file{'' if n == 1 else 's'}"
+                 f"{', ' + size if size else ''})") if n else f"{body.repo_id} (partial)"
+
     job = JOBS.start(
         kind="download", mode=mode, repo_id=body.repo_id,
         repo_type=body.repo_type, local_dir=_resolve_dir(body.local_dir),
+        label=label, allow_patterns=patterns or None,
     )
     return job.public()
 
