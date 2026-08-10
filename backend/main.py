@@ -654,10 +654,32 @@ async def http_exc_handler(_req, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
 
+class NoCacheStatic(StaticFiles):
+    """Serve the frontend with `Cache-Control: no-cache`.
+
+    StaticFiles sends an ETag and Last-Modified but no Cache-Control, which leaves the
+    browser applying *heuristic* freshness -- it may reuse a file for a while without ever
+    asking. Each file ages independently, so editing the app leaves you with, say, the new
+    app.js and last week's styles.css: repo names became <button>s in one file and picked up
+    their unstyled white background because the rule that removes it was in the other. The
+    failure looks like a bug in the app, not a stale asset, and "hard-refresh" is a poor
+    thing to have to know.
+
+    `no-cache` means revalidate, not "don't store": the browser still caches, it just asks
+    first, and the answer is a 304 with no body. Against a server on 127.0.0.1 that costs
+    approximately nothing, which is a fine trade for never shipping a half-updated UI.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app.include_router(dataset_router)
 
 # Mounted LAST so /api/* routes above take precedence.
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+app.mount("/", NoCacheStatic(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
 # 8000 collides with almost every other dev server; this one is far less contested.
