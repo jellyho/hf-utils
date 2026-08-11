@@ -126,23 +126,30 @@ function renderEpisodeStats(rows) {
   if (!rows.length) { box.replaceChildren(); return; }
 
   const frames = new Map();
+  const count = new Map();
   let total = 0;
   for (const e of rows) {
     total += e.length;
     const key = DS.outcomes[String(e.ep)] || "unmarked";
     frames.set(key, (frames.get(key) || 0) + e.length);
+    count.set(key, (count.get(key) || 0) + 1);
   }
 
+  // Both numbers, because they answer different questions: how many runs succeeded, and how
+  // much footage that actually amounts to. Episodes here range from 30s to 2 minutes, so one
+  // does not follow from the other.
   const parts = [el("span", { className: "ep-stat total" },
-    `${fmtSpan(total / fps)} total`)];
+    `${rows.length} ep · ${fmtSpan(total / fps)}`)];
   // Fixed order so the row doesn't reshuffle as the filter changes; only what is present.
   for (const key of ["success", "fail", "discard", "unmarked"]) {
     const n = frames.get(key);
     if (!n) continue;
     const mark = { success: "✓", fail: "✗", discard: "·", unmarked: "–" }[key];
-    const pct = Math.round((n / total) * 100);
-    parts.push(el("span", { className: `ep-stat ${key}`, title: `${pct}% of the shown footage` },
-      `${mark} ${fmtSpan(n / fps)}`));
+    const eps = count.get(key);
+    const pct = Math.round((eps / rows.length) * 100);
+    parts.push(el("span", { className: `ep-stat ${key}`,
+      title: `${eps} of ${rows.length} episodes (${pct}%) · ${fmtSpan(n / fps)}` },
+      `${mark} ${eps} · ${fmtSpan(n / fps)}`));
   }
   box.replaceChildren(...parts);
 }
