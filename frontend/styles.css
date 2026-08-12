@@ -243,7 +243,8 @@ a.btn { display: inline-block; text-decoration: none; }
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.file-chip::before { content: "📄 "; }
+.file-chip::before { content: "⤓ "; }
+a.file-chip { display: inline-block; text-decoration: none; }
 .file-chip:hover { border-color: var(--accent-2); color: var(--accent-2); }
 
 .job-logwrap { margin-top: 10px; }

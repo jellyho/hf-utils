@@ -575,8 +575,10 @@ function renderJobCard(j) {
       resume.addEventListener("click", () => resumeJob(j.id));
       head.append(resume);
     }
-    if (j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
-      // Renders and downloads produce files worth looking at — jump straight to them.
+    // "Open folder" shells out on the *server*. From another machine that pops a window on
+    // someone else's desktop and does nothing visible here, so it is local-only; remotely
+    // the file chips below are the way to get at the results.
+    if (LOCAL_CLIENT && j.local_dir && (j.kind === "ds_render" || j.kind === "download")) {
       const open = el("button", { className: "btn tiny", title: j.local_dir }, "📂 Open folder");
       open.addEventListener("click", () => revealFolder(j.local_dir));
       head.append(open);
@@ -596,9 +598,14 @@ function renderJobCard(j) {
     const files = el("div", { className: "job-files" });
     for (const path of j.outputs) {
       const name = path.split(/[\\/]/).pop();
-      const chip = el("button", { className: "file-chip", title: path, type: "button" }, name);
-      chip.addEventListener("click", () => revealFolder(path));
-      files.append(chip);
+      // A real download link, so it works the same whether the browser is on this machine
+      // or across the network — and "Save link as…" / middle-click keep working.
+      files.append(el("a", {
+        className: "file-chip",
+        href: `/api/jobs/${j.id}/file?path=${encodeURIComponent(path)}`,
+        download: name,
+        title: `${path}\n(click to download)`,
+      }, name));
     }
     card.append(files);
   }
@@ -686,6 +693,11 @@ async function detectDownload() {
 // Where downloads land, as the server resolves it. Filled in from /api/whoami at start-up;
 // until then a relative path still works, because the server anchors it to the same root.
 let DOWNLOAD_ROOT = "";
+
+// Is this browser on the same machine as the server? Anything that acts on the server's
+// desktop (opening a folder) is meaningless otherwise. Assumed true until /api/config
+// answers, and for older servers that don't report it.
+let LOCAL_CLIENT = true;
 
 // The form asks only for the parent — the repo's own name is always the folder inside it, so
 // there is no way to typo it, and picking a parent once is enough for every later download.
@@ -964,6 +976,7 @@ async function init() {
   try {
     const cfg = await api("/api/config");
     DOWNLOAD_ROOT = cfg.download_root || "";
+    LOCAL_CLIENT = cfg.local_client !== false;
     $("#dlParentDir").placeholder = DOWNLOAD_ROOT;
     if (!$("#dlParentDir").value.trim()) $("#dlParentDir").value = DOWNLOAD_ROOT;
     showDlDest();

@@ -23,6 +23,14 @@ through the website one repo at a time.
 - A cancelled, failed or interrupted download keeps its files, so **Resume** continues instead
   of starting the transfer over — completed files are skipped outright and a partial one picks
   up from its `.incomplete`.
+- **Works when the browser isn't on this machine.** A job's output files are download links,
+  so rendered videos come to you over HTTP instead of sitting on the server's disk. "📂 Open
+  folder" shells out to the *server's* file manager, so it only appears when the browser and
+  the server are the same machine (`/api/config` reports `local_client`); from elsewhere it
+  would pop a window on someone else's desktop and do nothing visible to you. Rendering many
+  episodes remotely? Tick **Also bundle into one .zip** and download one file instead of fifty.
+  `GET /api/jobs/{id}/file` is scoped to that job's own outputs and output folder — compared
+  after `resolve()`, so `..` and symlinks can't walk out of it — not a general file server.
 - **Jobs outlive the server.** Records and logs are kept under `~/.hfutil/jobs`
   (`HFUTIL_STATE_DIR`), so restarting no longer empties the Jobs tab. On startup a transfer
   whose worker is *still running* is re-adopted and keeps streaming into the UI (badged
@@ -303,6 +311,7 @@ GET  /api/jobs                             # all transfer jobs (short log tail)
 GET  /api/jobs/{id}                        # one job (full log tail)
 POST /api/jobs/{id}/cancel
 POST /api/jobs/{id}/resume                 # re-run the spec; downloads continue
+GET  /api/jobs/{id}/file?path=              # download one of that job's output files
 DELETE /api/jobs/{id}                      # drop one job + its log (files are kept)
 POST /api/jobs/clear                       # drop every finished job
 

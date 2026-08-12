@@ -18,8 +18,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -150,15 +150,24 @@ def whoami() -> dict:
 
 
 @app.get("/api/config")
-def config() -> dict:
+def config(request: Request) -> dict:
     """Server-side settings the UI needs. Deliberately makes no Hub call.
 
     The download root used to ride along on /api/whoami. That tied it to being logged in: an
     expired token or an unreachable Hub left the UI with no root at all, and a download form
     whose parent folder was the empty string -- which joins to the filesystem root. Where
     files land must not depend on authentication.
+
+    `local_client` says whether this browser is on the same machine as the server. Several
+    actions only make sense then -- "Open folder" shells out to the *server's* file manager,
+    which from another machine pops a window on someone else's desktop and shows the person
+    who clicked nothing at all.
     """
-    return {"download_root": str(DOWNLOAD_ROOT)}
+    host = request.client.host if request.client else ""
+    return {
+        "download_root": str(DOWNLOAD_ROOT),
+        "local_client": host in ("127.0.0.1", "::1", "localhost"),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -500,6 +509,35 @@ def job_resume(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=409, detail="unknown job, or it is still running")
     return {"ok": True, "id": job.id}
+
+
+@app.get("/api/jobs/{job_id}/file")
+def job_file(job_id: str, path: str):
+    """Send a file this job produced to the browser.
+
+    Deliberately *not* a general file server. The path has to be one of the job's own
+    outputs, or sit inside the folder the job wrote to -- so this reads back what the tool
+    just made, and nothing else. Both sides are compared after ``resolve()``, which follows
+    symlinks, so a link planted inside the output folder cannot point out of it.
+    """
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    target = Path(path).expanduser().resolve(strict=False)
+    allowed = {Path(p).expanduser().resolve(strict=False) for p in job.outputs}
+    ok = target in allowed
+    if not ok and job.local_dir:
+        root = Path(job.local_dir).expanduser().resolve(strict=False)
+        ok = target == root or root in target.parents
+    if not ok:
+        raise HTTPException(status_code=403, detail="that file is not one of this job's outputs")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail=f"no such file: {target.name}")
+
+    # octet-stream so the browser saves it rather than trying to play an mp4 in a tab the
+    # user then has to back out of; the filename comes back as the name on disk.
+    return FileResponse(target, filename=target.name, media_type="application/octet-stream")
 
 
 @app.delete("/api/jobs/{job_id}")
