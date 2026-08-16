@@ -553,7 +553,7 @@ async function openRenderDialog() {
   $("#rdFrom").value = "0";
   $("#rdTo").value = String(DS.ep.length - 1);
   syncRange();
-  RD.cams = Object.keys(DS.ep.videos);      // info.json order to start with
+  RD.cams = rdDefaultCamOrder(Object.keys(DS.ep.videos));
   RD.camOn = new Set(RD.cams);
   rdRenderCameras();
   $("#rdGifRow").hidden = $("#rdFormat").value !== "gif";
@@ -576,6 +576,26 @@ const RD = { sel: new Set(), cams: [], camOn: new Set() };
 
 /** The ticked cameras, in the order the list shows them = left to right in the output. */
 const rdCamOrder = () => RD.cams.filter((k) => RD.camOn.has(k));
+
+/**
+ * Default order: anything "left", then everything else, then anything "right" — so a
+ * three-camera rig comes out wrist_left · agentview · wrist_right, laid out the way you
+ * stand in front of the robot. info.json tends to list the two wrists together, which puts
+ * the overview off to one side.
+ *
+ * Matched on whole tokens of the short name, not substrings: `brightness` contains "right".
+ * A rig with no left/right in its names is left in info.json order, since sort() is stable
+ * and every camera lands in the same group.
+ */
+function rdDefaultCamOrder(keys) {
+  const side = (key) => {
+    const tokens = shortCam(key).toLowerCase().split(/[^a-z0-9]+/);
+    if (tokens.includes("left")) return 0;
+    if (tokens.includes("right")) return 2;
+    return 1;
+  };
+  return [...keys].sort((a, b) => side(a) - side(b));
+}
 
 function rdRenderCameras() {
   const order = rdCamOrder();

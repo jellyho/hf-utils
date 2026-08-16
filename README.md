@@ -118,7 +118,12 @@ Open any local v3.0 dataset folder (including one straight out of the HF cache).
   cameras are a reorderable list rather than a checkbox grid — tick what to include, `↑`/`↓`
   to arrange, and the number on each row is where that panel lands in the strip. Top to bottom
   in the dialog is left to right in the video, and the order is recorded in the file's
-  `comment` metadata tag.
+  `comment` metadata tag. The default is **left · everything else · right** (so a three-camera
+  rig opens as `wrist_left · agentview · wrist_right`, laid out the way you stand in front of
+  the robot) rather than `info.json` order, which lists the wrists together and pushes the
+  overview to one side. Matching is on whole tokens of the name, so a camera called
+  `brightness` isn't mistaken for a right-hand one; a rig with no left/right in its names
+  keeps `info.json` order.
 - **Bulk render.** The render dialog carries the episode list itself — checkboxes with the
   same **✓ success / ✗ fail / · discard** marker the sidebar shows, a filter by index or task,
   and quick-select chips (`All`, `None`, `✓ success (201)`, `✗ fail (8)`, `– unmarked`) that
