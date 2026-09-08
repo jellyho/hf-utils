@@ -19,6 +19,9 @@ dependencies = [
     "pandas>=2.0",
 ]
 
+# These three ARE the app's install list -- `run.sh` asks uv for all of them. They stay
+# extras rather than hard dependencies so a project that only wants `hfutil.dataset` gets
+# pyarrow/pandas and no web server, no torch.
 [project.optional-dependencies]
 # Everything needed to run the local web GUI (`python -m backend.main`).
 app = [

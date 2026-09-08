@@ -188,14 +188,21 @@ Both are carried across and renumbered when episodes are deleted.
 
 ## Requirements
 
-- Python 3.10–3.12 (developed on 3.12).
+- [uv](https://docs.astral.sh/uv/). It is the only thing you install by hand; it fetches
+  Python itself, so there is no "install Python 3.12 first" step.
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh      # Windows: irm https://astral.sh/uv/install.ps1 | iex
+  ```
+- Python 3.12 is pinned in `.python-version` and uv downloads it for you. The library half
+  (`hfutil`) supports 3.10+; the app pins 3.12 because `lerobot==0.4.4` does not build on
+  3.13+, and a bare `python3` was picking up whatever the system happened to have.
 - A Hugging Face login. If you haven't logged in on this machine:
   ```bash
   hf auth login
   ```
   (older versions: `huggingface-cli login`). The token is read from the standard
   HF cache automatically.
-- `lerobot==0.4.4` is pinned in `requirements.txt` for the Transfer tab. It pulls
+- `lerobot==0.4.4` is pinned in `pyproject.toml` for the Transfer tab. It pulls
   in torch / torchvision / transformers, so the **first install is large (a few
   hundred MB+)** and may take a while. It also constrains `huggingface_hub<0.36`.
 
@@ -213,11 +220,13 @@ Both are carried across and renumbered when episodes are deleted.
 
 **Any OS (manual):**
 ```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate    |  macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-python -m backend.main
+uv sync --all-extras         # creates .venv, fetches Python 3.12, installs from uv.lock
+uv run python -m backend.main
 ```
+
+`run.sh` / `run.ps1` do exactly that, so the manual form is only useful when you want the
+environment without starting the server. Versions come from `uv.lock`, which is committed:
+everyone gets the same resolution, and `uv lock --upgrade` is what changes it.
 
 It serves on **<http://127.0.0.1:8765>** and opens a browser for you. If that port is
 already taken it moves to the next free one and says so, so two copies can run side by
@@ -262,9 +271,10 @@ hf-util/
 │   ├── annotate.js         # subtask annotation strip (drag a span, click a label)
 │   ├── plot.js             # small-multiple timeseries charts (inline SVG)
 │   └── styles.css
-├── pyproject.toml          # `pip install -e .` — lets other projects import hfutil
-├── requirements.txt
-├── run.ps1 / run.sh        # one-command launchers (create the venv on first run)
+├── pyproject.toml          # dependencies (extras = the app's install list) + packaging
+├── uv.lock                 # the exact resolution everyone gets; committed on purpose
+├── .python-version         # 3.12 — uv fetches it, so no system Python is required
+├── run.ps1 / run.sh        # one-command launchers (`uv run`, first run builds .venv)
 └── README.md
 ```
 
