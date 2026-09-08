@@ -5,14 +5,16 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$venvPy = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPy)) {
-    Write-Host "Creating virtual environment..." -ForegroundColor Cyan
-    python -m venv .venv
-    & $venvPy -m pip install --upgrade pip
-    & $venvPy -m pip install -r requirements.txt
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Write-Host "uv is not installed, and it is what builds the environment now." -ForegroundColor Yellow
+    Write-Host "Install it with:" -ForegroundColor Yellow
+    Write-Host '    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
+    Write-Host "then run this script again." -ForegroundColor Yellow
+    exit 1
 }
 
-# The server picks the port (moving past one that's taken) and opens the browser itself,
-# so there is no URL to guess here.
-& $venvPy -m backend.main @args
+# One command replaces the venv + pip dance: uv fetches the interpreter named in
+# .python-version, creates .venv, and installs the exact versions in uv.lock -- a no-op once
+# the environment matches. --all-extras is the app's install list (server, viewer, Transfer).
+# The server picks the port and opens the browser itself, so there is no URL to guess here.
+uv run --all-extras python -m backend.main @args
